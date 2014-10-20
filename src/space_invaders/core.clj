@@ -9,15 +9,17 @@
       {:x (* 75 (rem i 8))
        :y (* 75 (quot i 8))})))
 
-; TODO: load sprites for each entity
 (defn create-board [w h]
   {:player         {:x (* 0.5 w)
-                    :y (* 0.9 h)}
-   :player-bullets []
+                    :y (* 0.9 h)
+                    :sprite (q/load-image "resources/player.png")}
+   :player-bullets {:locations []
+                    :sprite (q/load-image "resources/bullet.png")}
    :patrol         {:invaders (make-invaders)
                     :x 75
                     :y 75
-                    :dx 1}})
+                    :dx 1
+                    :sprite (q/load-image "resources/invader.png")}})
 
 (defn setup []
   (let [w (q/width)
@@ -33,7 +35,7 @@
   ;
   ; 1) gets rid of bullets that pass off screen, and
   ; 2) moves remaining bullets upward.
-  (update-in state [:player-bullets]
+  (update-in state [:player-bullets :locations]
     (fn [bullets]
       (->> bullets
         (filter (fn [bullet] (> (bullet :y) 0)))
@@ -72,39 +74,34 @@
 (defn move-player [player dx]
   (update-in player [:x] (fn [x] (+ x dx))))
 
+; TODO: Figure out how to create new bullet _only_ when space key is pressed.
 (defn key-pressed [state event]
   (let [key            (event :key)
         key-code       (event :key-code)
         player         (state :player)
-        player-bullets (state :player-bullets)
         dx             ({:left -10 :right 10} key 0)
         new-bullet     {:x (player :x) :y (player :y)}]
     (-> state
       (update-in [:player :x] (fn [x] (+ x dx)))
-      (update-in [:player-bullets] (fn [bullets] (if (= 32 key-code) (conj bullets new-bullet) bullets)))
+      (update-in [:player-bullets :locations] (fn [bullets] (if (= 32 key-code) (conj bullets new-bullet) bullets)))
       )))
 
-; TODO: draw sprite
-(defn draw-player [{x :x y :y}]
-  (q/fill 0)
-  (q/rect x y 50 50))
+(defn draw-player [{x :x y :y sprite :sprite}]
+  (q/image sprite x y))
 
-; TODO: draw sprites
-(defn draw-bullets [bullets]
+(defn draw-bullets [{bullets :locations sprite :sprite}]
   (doseq [{x :x y :y} bullets]
-    (q/fill 0)
-    (q/rect x y 10 10)
+    (q/image sprite x y)
     )
   )
 
-; TODO: draw sprites
 (defn draw-patrol [patrol]
   (let [{patrol-x :x
          patrol-y :y
-         invaders :invaders} patrol]
+         invaders :invaders
+         sprite   :sprite} patrol]
     (doseq [{invader-x :x invader-y :y} invaders]
-      (q/fill 0)
-      (q/rect (+ patrol-x invader-x) (+ patrol-y invader-y) 50 50)
+      (q/image sprite (+ patrol-x invader-x) (+ patrol-y invader-y))
       )
     )
   )
@@ -117,7 +114,7 @@
         bullets (state :player-bullets)
         patrol  (state :patrol)
         ]
-    (q/background 255)
+    (q/background 0)
 
     (draw-player player)
     (draw-bullets bullets)
