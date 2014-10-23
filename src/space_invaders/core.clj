@@ -25,7 +25,7 @@
   (let [w (q/width)
         h (q/height)]
     (q/smooth)
-    (q/rect-mode :center)
+    (q/image-mode :center)
     (q/frame-rate 60)
 ;    (q/no-loop)
     (create-board w h)))
@@ -80,7 +80,7 @@
         key-code       (event :key-code)
         player         (state :player)
         dx             ({:left -10 :right 10} key 0)
-        new-bullet     {:x (player :x) :y (player :y)}]
+        new-bullet     {:x (player :x) :y (- (player :y) 48)}]
     (-> state
       (update-in [:player :x] (fn [x] (+ x dx)))
       (update-in [:player-bullets :locations] (fn [bullets] (if (= 32 key-code) (conj bullets new-bullet) bullets)))
