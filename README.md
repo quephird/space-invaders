@@ -8,17 +8,17 @@ This project requires Leiningen; you can find instructions on how to install it 
 
 Download the project to a local directory:
 
-    `git clone https://github.com/quephird/space-invaders`
+    git clone https://github.com/quephird/space-invaders
 
 ... and run the following:
 
-    `lein repl`
+    lein repl
 
 Once in the Clojure REPL, issue the following:
 
-    `(load-file "./src/space_invaders/core.clj")
+    (load-file "./src/space_invaders/core.clj")
     (in-ns 'function-plotter.core)
-    (-main)`
+    (-main)
 
 ## Current features
 
