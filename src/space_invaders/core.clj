@@ -10,6 +10,7 @@
       {:x (* 75 (rem i 8))
        :y (* 75 (quot i 8))})))
 
+; TODO: create and load sprites for digits
 (defn create-board [w h]
   "Returns a nested hashmap representing the entire state of the game"
   {:player         {:x (* 0.5 w)
@@ -24,33 +25,43 @@
                     :sprite (q/load-image "resources/invader.png")}
    :score           0})
 
+; TODO: Get rid of magic numbers
+;       fix lying docstring here
 (defn shot? [{entity-x :x entity-y :y}
-             {bullet-x :x bullet-y :y}]
+             {bullet-x :x bullet-y :y}
+             {patrol-x :x patrol-y :y}]
   "Returns true if the bullet is within 50 pixels in both directions of the entity"
-  (and (< (Math/abs (- bullet-x (+ entity-x 75))) 32)
-       (< (Math/abs (- bullet-y (+ entity-y 75))) 24))
+;  (let [answer
+  (and (< (Math/abs (- bullet-x (+ entity-x patrol-x))) 32)
+       (< (Math/abs (- bullet-y (+ entity-y patrol-y))) 24))
+;        ]
+;    (if (true? answer) (println entity-x entity-y bullet-x bullet-y))
+;    answer)
   )
 
 ; TODO: The next three functions are smelly; there is definitely
 ;       code repetition here but I wanted to get something working first.
-(defn no-hits? [bullet invaders]
+(defn no-hits? [bullet invaders patrol-coords]
   "Returns true if the bullet has hit none of the invaders"
-  (let [hits (count (filter (fn [invader] (shot? invader bullet)) invaders))]
+  (let [hits (count (filter (fn [invader] (shot? invader bullet patrol-coords)) invaders))]
     (zero? hits)))
 
-(defn not-hit? [invader bullets]
+(defn not-hit? [invader bullets patrol-coords]
   "Returns true if the invader has not been hit by any of the bullets"
-  (let [hits (count (filter (fn [bullet] (shot? invader bullet)) bullets))]
+  (let [hits (count (filter (fn [bullet] (shot? invader bullet patrol-coords)) bullets))]
     (zero? hits)))
 
 (defn check-for-collisions [state]
   "Returns a new version of game state removing all bullets
    and invaders involved in collisions"
-  (let [{{invaders  :invaders}  :patrol
+  (let [{{invaders  :invaders
+          patrol-x  :x
+          patrol-y  :y}  :patrol
          {locations :locations} :player-bullets
          score                  :score} state
-        bullets-left-over     (filter (fn [bullet] (no-hits? bullet invaders)) locations)
-        invaders-left-over    (filter (fn [invader] (not-hit? invader locations)) invaders)
+        patrol-coords         {:x patrol-x :y patrol-y }
+        bullets-left-over     (filter (fn [bullet] (no-hits? bullet invaders patrol-coords)) locations)
+        invaders-left-over    (filter (fn [invader] (not-hit? invader locations patrol-coords)) invaders)
         points-scored         (* (- (count invaders) (count invaders-left-over)) 100)]
     (-> state
       (assoc-in [:player-bullets :locations] bullets-left-over)
@@ -149,6 +160,7 @@
     )
   )
 
+; TODO: render digits using sprites
 (defn draw-score [score]
   "Renders the current score to the screen"
   (let [w       (q/width)
