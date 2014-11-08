@@ -31,13 +31,8 @@
              {bullet-x :x bullet-y :y}
              {patrol-x :x patrol-y :y}]
   "Returns true if the bullet is within 50 pixels in both directions of the entity"
-;  (let [answer
   (and (< (Math/abs (- bullet-x (+ entity-x patrol-x))) 32)
-       (< (Math/abs (- bullet-y (+ entity-y patrol-y))) 24))
-;        ]
-;    (if (true? answer) (println entity-x entity-y bullet-x bullet-y))
-;    answer)
-  )
+       (< (Math/abs (- bullet-y (+ entity-y patrol-y))) 24)))
 
 ; TODO: The next three functions are smelly; there is definitely
 ;       code repetition here but I wanted to get something working first.
@@ -66,10 +61,7 @@
     (-> state
       (assoc-in [:player-bullets :locations] bullets-left-over)
       (assoc-in [:patrol :invaders] invaders-left-over)
-      (update-in [:score] (fn [score] (+ score points-scored)))
-      )
-    )
-  )
+      (update-in [:score] (fn [score] (+ score points-scored))))))
 
 (defn update-bullets [state]
   "Returns a new version of game state by:
@@ -81,11 +73,7 @@
     (fn [bullets]
       (->> bullets
         (filter (fn [bullet] (> (bullet :y) 0)))
-        (map (fn [bullet] (update-in bullet [:y] (fn [y] (- y 5)))))
-        )
-      )
-    )
-  )
+        (map (fn [bullet] (update-in bullet [:y] (fn [y] (- y 5)))))))))
 
 (defn update-patrol [state]
   "Returns a new version of game state after moving the invader patrol"
@@ -102,11 +90,7 @@
         (-> patrol
           (update-in [:dx] (fn [dx] new-dx))
           (update-in [:x] (fn [x] (+ x new-dx)))
-          )
-        )
-      )
-    )
-  )
+          )))))
 
 (defn update-board [state]
   "Primary hook which updates the entire game state before the next frame is drawn"
@@ -144,9 +128,7 @@
 (defn draw-bullets [{bullets :locations sprite :sprite}]
   "Renders all player bullets to the screen"
   (doseq [{x :x y :y} bullets]
-    (q/image sprite x y)
-    )
-  )
+    (q/image sprite x y)))
 
 (defn draw-patrol [patrol]
   "Renders the entire invader patrol to the screen"
@@ -155,10 +137,7 @@
          invaders :invaders
          sprite   :sprite} patrol]
     (doseq [{invader-x :x invader-y :y} invaders]
-      (q/image sprite (+ patrol-x invader-x) (+ patrol-y invader-y))
-      )
-    )
-  )
+      (q/image sprite (+ patrol-x invader-x) (+ patrol-y invader-y)))))
 
 ; TODO: render digits using sprites
 (defn draw-score [score]
@@ -167,10 +146,7 @@
         h       (q/height)]
     (q/fill 255)
     (q/text-size 32)
-    (q/text (str score) 10 25)
-    )
-  )
-
+    (q/text (str score) 10 25)))
 
 (defn draw-board [state]
   "Primary hook to render all entities to the screen"
@@ -187,9 +163,7 @@
     (draw-player player)
     (draw-bullets bullets)
     (draw-patrol patrol)
-    (draw-score score)
-    )
-  )
+    (draw-score score)))
 
 (defn setup []
   "Primary hook to configure parts of the environment
@@ -198,7 +172,6 @@
         h (q/height)]
     (q/smooth)
     (q/image-mode :center)
-;    (q/no-loop)
     (create-board w h)))
 
 (q/defsketch space-invaders
