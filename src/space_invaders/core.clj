@@ -1,5 +1,5 @@
 (ns space-invaders.core
-  (:import [ddf.minim Minim])
+  (:import [ddf.minim Minim AudioPlayer])
   (:require [quil.core :as q :include-macros true]
             [quil.middleware :as m]))
 
@@ -10,23 +10,44 @@
       {:x (* 75 (rem i 8))
        :y (* 75 (quot i 8))})))
 
-; TODO: create and load sprites for digits
-(defn create-board [w h]
+; TODO: Possibly introduce increasing difficulty by making speed a property
+;         of the bullets too.
+;       :dx property for patrol should _really_ be :direction;
+;         move patrol should be changed accordingly.
+;       Clean up code init'ing sprites for score digits.
+;       Make probability of generating a bullet a property
+;         that can be "mutated" to increase difficulty
+(defn create-board [w h m]
   "Returns a nested hashmap representing the entire state of the game"
   {:player         {:x (* 0.5 w)
                     :y (* 0.9 h)
                     :sprite (q/load-image "resources/player.png")}
    :player-bullets {:locations []
-                    :sprite (q/load-image "resources/bullet.png")}
+                    :sprite (q/load-image "resources/pbullet.png")
+                    :sound (.loadFile m "resources/pew.mp3")}
    :patrol         {:invaders (make-invaders)
                     :x 75
-                    :y 75
+                    :y 100
                     :dx 1
                     :sprite (q/load-image "resources/invader.png")}
-   :score           0})
+   :invader-bullets {:locations []
+                    :sprite (q/load-image "resources/ibullet.png")}
+   :score           {:value 0
+                     :sprites {\0 (q/load-image "resources/0.png")
+                               \1 (q/load-image "resources/1.png")
+                               \2 (q/load-image "resources/2.png")
+                               \3 (q/load-image "resources/3.png")
+                               \4 (q/load-image "resources/4.png")
+                               \5 (q/load-image "resources/5.png")
+                               \6 (q/load-image "resources/6.png")
+                               \7 (q/load-image "resources/7.png")
+                               \8 (q/load-image "resources/8.png")
+                               \9 (q/load-image "resources/9.png")}}
+   :lives           {:value  3
+                     :sprite (q/load-image "resources/playersm.png")}})
 
-; TODO: Get rid of magic numbers
-;       fix lying docstring here
+; TODO: Get rid of magic numbers.
+;       Fix lying docstring here.
 (defn shot? [{entity-x :x entity-y :y}
              {bullet-x :x bullet-y :y}
              {patrol-x :x patrol-y :y}]
@@ -46,6 +67,7 @@
   (let [hits (count (filter (fn [bullet] (shot? invader bullet patrol-coords)) bullets))]
     (zero? hits)))
 
+; TODO: Check to see if enemy bullet has hit player
 (defn check-for-collisions [state]
   "Returns a new version of game state removing all bullets
    and invaders involved in collisions"
@@ -61,21 +83,36 @@
     (-> state
       (assoc-in [:player-bullets :locations] bullets-left-over)
       (assoc-in [:patrol :invaders] invaders-left-over)
-      (update-in [:score] (fn [score] (+ score points-scored))))))
+      (update-in [:score :value] (fn [score] (+ score points-scored))))))
 
-(defn update-bullets [state]
+(defn move-player-bullets [state]
   "Returns a new version of game state by:
 
    * getting rid of player bullets that pass off screen, and
-   * moving remaining player bullets upward
-  "
+   * moving remaining player bullets upward"
   (update-in state [:player-bullets :locations]
     (fn [bullets]
       (->> bullets
         (filter (fn [bullet] (> (bullet :y) 0)))
         (map (fn [bullet] (update-in bullet [:y] (fn [y] (- y 5)))))))))
 
-(defn update-patrol [state]
+; TODO: Think about how to make this pure
+(defn move-invader-bullets [state]
+  "Returns a new version of game state by:
+
+   * getting rid of invader bullets that pass off screen, and
+   * moving remaining invader bullets downward"
+  (let [h (q/height)]
+    (update-in state [:invader-bullets :locations]
+      (fn [bullets]
+        (->> bullets
+          (filter (fn [bullet] (< (bullet :y) h)))
+          (map (fn [bullet] (update-in bullet [:y] (fn [y] (+ y 5))))))))))
+
+; TODO: Move patrol downward when it hits left or right side
+;       Figure out how to move remaining invaders as far or right as possible
+;         when leftmost or rightmost column of them is gone.
+(defn move-patrol [state]
   "Returns a new version of game state after moving the invader patrol"
   (update-in state [:patrol]
     (fn [patrol]
@@ -92,34 +129,61 @@
           (update-in [:x] (fn [x] (+ x new-dx)))
           )))))
 
+(defn generate-new-bullet [{x :x y :y}
+                           {patrol-x :patrol-x patrol-y :patrol-y}]
+  "Randomly creates a new bullet located relative to
+   the inbound invader and patrol coordinates"
+  (if (> (q/random 1) 0.995)
+    {:x (+ x patrol-x) :y (+ y patrol-y)}
+  ))
+
+(defn generate-invader-bullets [state]
+  (let [{{invaders :invaders
+          patrol-x :x
+          patrol-y :y} :patrol} state
+        patrol-coords {:patrol-x patrol-x :patrol-y patrol-y}
+        new-bullets (->> invaders
+                      (map (fn [invader] (generate-new-bullet invader patrol-coords)))
+                      (filter #(not (nil? %)))
+                      (into []))]
+    (-> state
+      (update-in [:invader-bullets :locations] (fn [bullets] (concat bullets new-bullets))))))
+
 (defn update-board [state]
   "Primary hook which updates the entire game state before the next frame is drawn"
   (-> state
     (check-for-collisions)
-    (update-bullets)
-    (update-patrol)
+    (move-player-bullets)
+    (move-invader-bullets)
+    (move-patrol)
+    (generate-invader-bullets)
     ))
 
+; TODO: Prevent the player from moving off screen
 (defn move-player [player dx]
   "Returns a new version of the player hashmap representing a change in position"
   (update-in player [:x] (fn [x] (+ x dx))))
 
-; TODO: Figure out how to create new bullet _only_ when space key is pressed.
-(defn key-pressed [state event]
+; TODO: Figure out why player stops moving after hitting the space key
+;       with left or right key still depressed.
+(defn key-pressed [{player :player
+                   {sound :sound} :player-bullets :as state}
+                   {key :key key-code :key-code}]
   "Primary hook to return new version of game state taking into account:
 
   * moving the player left or right
-  * generating a new bullet
-  "
-  (let [key            (event :key)
-        key-code       (event :key-code)
-        player         (state :player)
-        dx             ({:left -10 :right 10} key 0)
+  * generating a new bullet"
+  (let [dx             ({:left -10 :right 10} key 0)
         new-bullet     {:x (player :x) :y (- (player :y) 48)}]
-    (-> state
-      (update-in [:player :x] (fn [x] (+ x dx)))
-      (update-in [:player-bullets :locations] (fn [bullets] (if (= 32 key-code) (conj bullets new-bullet) bullets)))
-      )))
+    (cond
+      (= 32 key-code)
+        (do
+          (doto sound .rewind .play)
+          (update-in state [:player-bullets :locations] conj new-bullet))
+      (contains? #{:left :right} key)
+        (update-in state [:player :x] (fn [x] (+ x dx)))
+      :else
+        state)))
 
 (defn draw-player [{x :x y :y sprite :sprite}]
   "Renders the player to the screen"
@@ -139,40 +203,55 @@
     (doseq [{invader-x :x invader-y :y} invaders]
       (q/image sprite (+ patrol-x invader-x) (+ patrol-y invader-y)))))
 
-; TODO: render digits using sprites
-(defn draw-score [score]
+(defn draw-score [{value :value sprites :sprites}]
   "Renders the current score to the screen"
-  (let [w       (q/width)
-        h       (q/height)]
-    (q/fill 255)
-    (q/text-size 32)
-    (q/text (str score) 10 25)))
+  (q/push-matrix)
+  (q/translate 25 25)
+  (doseq [digit (str value)]
+    (q/image (sprites digit) 0 0)
+    (q/translate 32 0))
+  (q/pop-matrix))
+
+(defn draw-lives [{value :value sprite :sprite}]
+  "Renders the number of lives left for the player"
+  (let [w (q/width)]
+    (q/push-matrix)
+    (q/translate (- w 32) 32)
+    (dotimes [_ value]
+      (q/image sprite 0 0)
+      (q/translate -32 0))
+    (q/pop-matrix)))
 
 (defn draw-board [state]
   "Primary hook to render all entities to the screen"
   (let [fc      (q/frame-count)
         w       (q/width)
         h       (q/height)
-        player  (state :player)
-        bullets (state :player-bullets)
-        patrol  (state :patrol)
-        score   (state :score)
-        ]
+        {player          :player
+         player-bullets  :player-bullets
+         invader-bullets :invader-bullets
+         patrol          :patrol
+         score           :score
+         lives           :lives} state]
     (q/background 0)
 
     (draw-player player)
-    (draw-bullets bullets)
+    (draw-bullets player-bullets)
+    (draw-bullets invader-bullets)
     (draw-patrol patrol)
-    (draw-score score)))
+    (draw-score score)
+    (draw-lives lives)
+    ))
 
 (defn setup []
   "Primary hook to configure parts of the environment
    and generate an initial game state"
   (let [w (q/width)
-        h (q/height)]
+        h (q/height)
+        m (Minim.)]
     (q/smooth)
     (q/image-mode :center)
-    (create-board w h)))
+    (create-board w h m)))
 
 (q/defsketch space-invaders
   :title "space invaders"
