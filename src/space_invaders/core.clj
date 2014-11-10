@@ -1,4 +1,4 @@
-(ns space-invaders.core
+ (ns space-invaders.core
   (:import [ddf.minim Minim AudioPlayer])
   (:require [quil.core :as q :include-macros true]
             [quil.middleware :as m]))
@@ -15,7 +15,8 @@
     (for [digit "0123456789"]
       [digit (q/load-image (str "resources/" digit ".png"))])))
 
-; TODO: Possibly introduce increasing difficulty by making speed a property
+; TODO: Need to introduce level property which can be incremented.
+;       Possibly introduce increasing difficulty by making speed a property
 ;         of the bullets too.
 ;       :dx property for patrol should _really_ be :direction;
 ;         move patrol should be changed accordingly.
@@ -103,8 +104,7 @@
           (filter (fn [bullet] (< (bullet :y) h)))
           (map (fn [bullet] (update-in bullet [:y] (fn [y] (+ y 5))))))))))
 
-; TODO: Move patrol downward when it hits left or right side
-;       Figure out how to move remaining invaders as far or right as possible
+; TODO: Figure out how to move remaining invaders as far or right as possible
 ;         when leftmost or rightmost column of them is gone.
 (defn move-patrol [state]
   "Returns a new version of game state after moving the invader patrol"
@@ -117,10 +117,15 @@
             new-dx (if (or (< curr-x 75)
                            (>= curr-x 200))
                      (- curr-dx)
-                     curr-dx)]
+                     curr-dx)
+            dy     (if (or (< curr-x 75)
+                           (>= curr-x 200))
+                     32
+                     0)]
         (-> patrol
           (update-in [:dx] (fn [dx] new-dx))
           (update-in [:x] (fn [x] (+ x new-dx)))
+          (update-in [:y] (fn [y] (+ y dy)))
           )))))
 
 (defn generate-new-bullet [{x :x y :y}
