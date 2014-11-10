@@ -42,11 +42,10 @@
                      :sprite (q/load-image "resources/playersm.png")}})
 
 ; TODO: Get rid of magic numbers.
-;       Fix lying docstring here.
 (defn shot? [{entity-x :x entity-y :y}
              {bullet-x :x bullet-y :y}
              {patrol-x :x patrol-y :y}]
-  "Returns true if the bullet is within 50 pixels in both directions of the entity"
+  "Returns true if the bullet is within the hitbox of the entity"
   (and (< (Math/abs (- bullet-x (+ entity-x patrol-x))) 32)
        (< (Math/abs (- bullet-y (+ entity-y patrol-y))) 24)))
 
