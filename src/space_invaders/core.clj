@@ -10,11 +10,15 @@
       {:x (* 75 (rem i 8))
        :y (* 75 (quot i 8))})))
 
+(defn load-digit-sprites []
+  (into {}
+    (for [digit "0123456789"]
+      [digit (q/load-image (str "resources/" digit ".png"))])))
+
 ; TODO: Possibly introduce increasing difficulty by making speed a property
 ;         of the bullets too.
 ;       :dx property for patrol should _really_ be :direction;
 ;         move patrol should be changed accordingly.
-;       Clean up code init'ing sprites for score digits.
 ;       Make probability of generating a bullet a property
 ;         that can be "mutated" to increase difficulty
 (defn create-board [w h m]
@@ -33,16 +37,7 @@
    :invader-bullets {:locations []
                     :sprite (q/load-image "resources/ibullet.png")}
    :score           {:value 0
-                     :sprites {\0 (q/load-image "resources/0.png")
-                               \1 (q/load-image "resources/1.png")
-                               \2 (q/load-image "resources/2.png")
-                               \3 (q/load-image "resources/3.png")
-                               \4 (q/load-image "resources/4.png")
-                               \5 (q/load-image "resources/5.png")
-                               \6 (q/load-image "resources/6.png")
-                               \7 (q/load-image "resources/7.png")
-                               \8 (q/load-image "resources/8.png")
-                               \9 (q/load-image "resources/9.png")}}
+                     :sprites (load-digit-sprites)}
    :lives           {:value  3
                      :sprite (q/load-image "resources/playersm.png")}})
 
