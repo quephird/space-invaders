@@ -18,8 +18,6 @@
 ; TODO: Need to introduce level property which can be incremented.
 ;       Possibly introduce increasing difficulty by making speed a property
 ;         of the bullets too.
-;       :dx property for patrol should _really_ be :direction;
-;         move patrol should be changed accordingly.
 ;       Make probability of generating a bullet a property
 ;         that can be "mutated" to increase difficulty
 (defn create-board [w h m]
@@ -31,8 +29,6 @@
                     :sprite (q/load-image "resources/pbullet.png")
                     :sound (.loadFile m "resources/pew.mp3")}
    :patrol         {:invaders (make-invaders)
-                    :x 0
-                    :y 0
                     :direction 1
                     :dx 1
                     :sprite (q/load-image "resources/invader.png")}
@@ -43,7 +39,7 @@
    :lives           {:value  3
                      :sprite (q/load-image "resources/playersm.png")}})
 
-; TODO: Get rid of magic numbers.
+; TODO: Better manage magic numbers.
 (defn shot? [{entity-x :x entity-y :y}
              {bullet-x :x bullet-y :y}]
   "Returns true if the bullet is within the hitbox of the entity"
@@ -106,9 +102,7 @@
         max-x (apply max (map #(:x %) invaders))]
     (or (< min-x 75) (>= max-x 725))))
 
-; TODO: Figure out how to move remaining invaders as far or right as possible
-;         when leftmost or rightmost column of them is gone.
-;       Need to better manage magic numbers.
+; TODO: Need to better manage magic numbers.
 (defn move-patrol [{{curr-direction :direction
                      curr-dx        :dx
                      invaders       :invaders} :patrol :as state}]
@@ -120,7 +114,6 @@
         dy            (if change-direction
                         32
                         0)]
-;    (println change-direction)
     (-> state
       (assoc-in [:patrol :direction] new-direction)
       (update-in [:patrol :invaders]
@@ -130,6 +123,7 @@
             (map (fn [invader] (update-in invader [:y] (fn [y] (+ y dy))))))
             )))))
 
+; TODO: Reconsider whether this needs to be a standalone function.
 (defn generate-new-bullet [{x :x y :y}]
   "Randomly creates a new bullet located relative to
    the inbound invader and patrol coordinates"
