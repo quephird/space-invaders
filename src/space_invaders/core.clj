@@ -7,8 +7,8 @@
   "Returns a vector of hashmaps each representing an invader"
   (into []
     (for [i (range 24)]
-      {:x (* 75 (rem i 8))
-       :y (* 75 (quot i 8))})))
+      {:x (* 75 (inc (rem i 8)))
+       :y (+ 100 (* 75 (quot i 8)))})))
 
 (defn load-digit-sprites []
   (into {}
@@ -31,8 +31,9 @@
                     :sprite (q/load-image "resources/pbullet.png")
                     :sound (.loadFile m "resources/pew.mp3")}
    :patrol         {:invaders (make-invaders)
-                    :x 75
-                    :y 100
+                    :x 0
+                    :y 0
+                    :direction 1
                     :dx 1
                     :sprite (q/load-image "resources/invader.png")}
    :invader-bullets {:locations []
@@ -44,36 +45,32 @@
 
 ; TODO: Get rid of magic numbers.
 (defn shot? [{entity-x :x entity-y :y}
-             {bullet-x :x bullet-y :y}
-             {patrol-x :x patrol-y :y}]
+             {bullet-x :x bullet-y :y}]
   "Returns true if the bullet is within the hitbox of the entity"
-  (and (< (Math/abs (- bullet-x (+ entity-x patrol-x))) 32)
-       (< (Math/abs (- bullet-y (+ entity-y patrol-y))) 24)))
+  (and (< (Math/abs (- bullet-x entity-x)) 32)
+       (< (Math/abs (- bullet-y entity-y)) 24)))
 
 ; TODO: The next three functions are smelly; there is definitely
 ;       code repetition here but I wanted to get something working first.
-(defn no-hits? [bullet invaders patrol-coords]
+(defn no-hits? [bullet invaders]
   "Returns true if the bullet has hit none of the invaders"
-  (let [hits (count (filter (fn [invader] (shot? invader bullet patrol-coords)) invaders))]
+  (let [hits (count (filter (fn [invader] (shot? invader bullet)) invaders))]
     (zero? hits)))
 
-(defn not-hit? [invader bullets patrol-coords]
+(defn not-hit? [invader bullets]
   "Returns true if the invader has not been hit by any of the bullets"
-  (let [hits (count (filter (fn [bullet] (shot? invader bullet patrol-coords)) bullets))]
+  (let [hits (count (filter (fn [bullet] (shot? invader bullet)) bullets))]
     (zero? hits)))
 
 ; TODO: Check to see if enemy bullet has hit player
 (defn check-for-collisions [state]
   "Returns a new version of game state removing all bullets
    and invaders involved in collisions"
-  (let [{{invaders  :invaders
-          patrol-x  :x
-          patrol-y  :y}  :patrol
+  (let [{{invaders  :invaders}  :patrol
          {locations :locations} :player-bullets
          score                  :score} state
-        patrol-coords         {:x patrol-x :y patrol-y }
-        bullets-left-over     (filter (fn [bullet] (no-hits? bullet invaders patrol-coords)) locations)
-        invaders-left-over    (filter (fn [invader] (not-hit? invader locations patrol-coords)) invaders)
+        bullets-left-over     (filter (fn [bullet] (no-hits? bullet invaders)) locations)
+        invaders-left-over    (filter (fn [invader] (not-hit? invader locations)) invaders)
         points-scored         (* (- (count invaders) (count invaders-left-over)) 100)]
     (-> state
       (assoc-in [:player-bullets :locations] bullets-left-over)
@@ -104,45 +101,45 @@
           (filter (fn [bullet] (< (bullet :y) h)))
           (map (fn [bullet] (update-in bullet [:y] (fn [y] (+ y 5))))))))))
 
+(defn change-direction? [invaders]
+  (let [min-x (apply min (map #(:x %) invaders))
+        max-x (apply max (map #(:x %) invaders))]
+    (or (< min-x 75) (>= max-x 725))))
+
 ; TODO: Figure out how to move remaining invaders as far or right as possible
 ;         when leftmost or rightmost column of them is gone.
-(defn move-patrol [state]
+;       Need to better manage magic numbers.
+(defn move-patrol [{{curr-direction :direction
+                     curr-dx        :dx
+                     invaders       :invaders} :patrol :as state}]
   "Returns a new version of game state after moving the invader patrol"
-  (update-in state [:patrol]
-    (fn [patrol]
-      ; This seems awfully hacky but I couldn't figure
-      ; out how better to capture current state
-      (let [curr-x  (patrol :x)
-            curr-dx (patrol :dx)
-            new-dx (if (or (< curr-x 75)
-                           (>= curr-x 200))
-                     (- curr-dx)
-                     curr-dx)
-            dy     (if (or (< curr-x 75)
-                           (>= curr-x 200))
-                     32
-                     0)]
-        (-> patrol
-          (update-in [:dx] (fn [dx] new-dx))
-          (update-in [:x] (fn [x] (+ x new-dx)))
-          (update-in [:y] (fn [y] (+ y dy)))
-          )))))
+  (let [change-direction (change-direction? invaders)
+        new-direction (if change-direction
+                        (- curr-direction)
+                        curr-direction)
+        dy            (if change-direction
+                        32
+                        0)]
+;    (println change-direction)
+    (-> state
+      (assoc-in [:patrol :direction] new-direction)
+      (update-in [:patrol :invaders]
+        (fn [invaders]
+          (->> invaders
+            (map (fn [invader] (update-in invader [:x] (fn [x] (+ x (* curr-dx new-direction))))))
+            (map (fn [invader] (update-in invader [:y] (fn [y] (+ y dy))))))
+            )))))
 
-(defn generate-new-bullet [{x :x y :y}
-                           {patrol-x :patrol-x patrol-y :patrol-y}]
+(defn generate-new-bullet [{x :x y :y}]
   "Randomly creates a new bullet located relative to
    the inbound invader and patrol coordinates"
   (if (> (q/random 1) 0.995)
-    {:x (+ x patrol-x) :y (+ y patrol-y)}
-  ))
+    {:x x :y y}))
 
 (defn generate-invader-bullets [state]
-  (let [{{invaders :invaders
-          patrol-x :x
-          patrol-y :y} :patrol} state
-        patrol-coords {:patrol-x patrol-x :patrol-y patrol-y}
+  (let [{{invaders :invaders} :patrol} state
         new-bullets (->> invaders
-                      (map (fn [invader] (generate-new-bullet invader patrol-coords)))
+                      (map (fn [invader] (generate-new-bullet invader)))
                       (filter #(not (nil? %)))
                       (into []))]
     (-> state
@@ -195,12 +192,10 @@
 
 (defn draw-patrol [patrol]
   "Renders the entire invader patrol to the screen"
-  (let [{patrol-x :x
-         patrol-y :y
-         invaders :invaders
+  (let [{invaders :invaders
          sprite   :sprite} patrol]
     (doseq [{invader-x :x invader-y :y} invaders]
-      (q/image sprite (+ patrol-x invader-x) (+ patrol-y invader-y)))))
+      (q/image sprite invader-x invader-y))))
 
 (defn draw-score [{value :value sprites :sprites}]
   "Renders the current score to the screen"
@@ -245,6 +240,7 @@
 (defn setup []
   "Primary hook to configure parts of the environment
    and generate an initial game state"
+;  (q/frame-rate 1)
   (let [w (q/width)
         h (q/height)
         m (Minim.)]
