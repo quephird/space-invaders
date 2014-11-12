@@ -73,6 +73,16 @@
       (assoc-in [:patrol :invaders] invaders-left-over)
       (update-in [:score :value] (fn [score] (+ score points-scored))))))
 
+(defn check-invaders-left [{{invaders :invaders} :patrol :as state}]
+  "Returns a new version of game state with a brand new patrol
+   if no invaders remain or the state unchanged."
+  (if (zero? (count invaders))
+    (-> state
+      (assoc-in [:patrol :invaders] (make-invaders))
+      (assoc-in [:patrol :direction] 1)
+      (assoc-in [:patrol :dx] 1))
+    state))
+
 (defn move-player-bullets [state]
   "Returns a new version of game state by:
 
@@ -97,12 +107,15 @@
           (filter (fn [bullet] (< (bullet :y) h)))
           (map (fn [bullet] (update-in bullet [:y] (fn [y] (+ y 5))))))))))
 
+; TODO: DOH! Nasty bug here when no more invaders!
+;         need to check to see if none left.
 (defn change-direction? [invaders]
   (let [min-x (apply min (map #(:x %) invaders))
         max-x (apply max (map #(:x %) invaders))]
     (or (< min-x 75) (>= max-x 725))))
 
 ; TODO: Need to better manage magic numbers.
+;       Increase :dx as number of invaders decreases
 (defn move-patrol [{{curr-direction :direction
                      curr-dx        :dx
                      invaders       :invaders} :patrol :as state}]
@@ -113,9 +126,11 @@
                         curr-direction)
         dy            (if change-direction
                         32
-                        0)]
+                        0)
+        new-dx        (/ 24 (count invaders))]
     (-> state
       (assoc-in [:patrol :direction] new-direction)
+      (assoc-in [:patrol :dx] new-dx)
       (update-in [:patrol :invaders]
         (fn [invaders]
           (->> invaders
@@ -143,6 +158,7 @@
   "Primary hook which updates the entire game state before the next frame is drawn"
   (-> state
     (check-for-collisions)
+    (check-invaders-left)
     (move-player-bullets)
     (move-invader-bullets)
     (move-patrol)
@@ -184,6 +200,8 @@
   (doseq [{x :x y :y} bullets]
     (q/image sprite x y)))
 
+; TODO: Think about how to draw exploded invaders,
+;         possibly introduce :status property for each invader
 (defn draw-patrol [patrol]
   "Renders the entire invader patrol to the screen"
   (let [{invaders :invaders
@@ -210,6 +228,7 @@
       (q/translate -32 0))
     (q/pop-matrix)))
 
+; TODO: Figure out how to implement background music
 (defn draw-board [state]
   "Primary hook to render all entities to the screen"
   (let [fc      (q/frame-count)
@@ -234,7 +253,6 @@
 (defn setup []
   "Primary hook to configure parts of the environment
    and generate an initial game state"
-;  (q/frame-rate 1)
   (let [w (q/width)
         h (q/height)
         m (Minim.)]
