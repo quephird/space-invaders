@@ -10,7 +10,7 @@ Download the project to a local directory:
 
     git clone https://github.com/quephird/space-invaders
 
-... and run the following:
+... move into that directory and run the following:
 
     lein repl
 
@@ -30,13 +30,13 @@ This is a _very_ basic game, my first actually, and so is nowhere near being a r
 * Firing bullets at the baddies
 * Collision detection between player bullets and baddies
 * Basic scoring
+* Bullets from the baddies
+* A patrol that moves downward and with increasing speed
 
 ## Goals
 
 I need to try to do at least some of the following:
 
-* Bullets from the baddies
-* A patrol that moves downward and with increasing speed
 * SOUND
 * Player death
 * Limited player lives
