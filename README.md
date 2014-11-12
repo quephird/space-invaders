@@ -17,8 +17,6 @@ Download the project to a local directory:
 Once in the Clojure REPL, issue the following:
 
     (load-file "./src/space_invaders/core.clj")
-    (in-ns 'function-plotter.core)
-    (-main)
 
 ## Current features
 
@@ -32,12 +30,13 @@ This is a _very_ basic game, my first actually, and so is nowhere near being a r
 * Basic scoring
 * Bullets from the baddies
 * A patrol that moves downward and with increasing speed
+* Player bullets make initial PEW sound
 
 ## Goals
 
-I need to try to do at least some of the following:
+I am hoping to implement at least some of the following:
 
-* SOUND
+* Sounds from invader bullets
 * Player death
 * Limited player lives
 * Obstacles
