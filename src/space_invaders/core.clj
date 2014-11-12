@@ -33,7 +33,8 @@
                     :dx 1
                     :sprite (q/load-image "resources/invader.png")}
    :invader-bullets {:locations []
-                    :sprite (q/load-image "resources/ibullet.png")}
+                    :sprite (q/load-image "resources/ibullet.png")
+                    :sound (.loadFile m "resources/laser.wav")}
    :score           {:value 0
                      :sprites (load-digit-sprites)}
    :lives           {:value  3
@@ -146,11 +147,14 @@
     {:x x :y y}))
 
 (defn generate-invader-bullets [state]
-  (let [{{invaders :invaders} :patrol} state
+  (let [{{invaders :invaders} :patrol
+         {sound :sound}       :invader-bullets} state
         new-bullets (->> invaders
                       (map (fn [invader] (generate-new-bullet invader)))
                       (filter #(not (nil? %)))
                       (into []))]
+    (dotimes [_ (count new-bullets)]
+      (doto sound .rewind .play))
     (-> state
       (update-in [:invader-bullets :locations] (fn [bullets] (concat bullets new-bullets))))))
 
