@@ -1,4 +1,4 @@
- (ns space-invaders.core
+(ns space-invaders.core
   (:import [ddf.minim Minim AudioPlayer])
   (:require [quil.core :as q :include-macros true]
             [quil.middleware :as m]))
@@ -15,16 +15,25 @@
     (for [digit "0123456789"]
       [digit (q/load-image (str "resources/" digit ".png"))])))
 
+(defn load-letter-sprites []
+  (into {}
+    (for [letter "GAMEOVR"]
+      [letter (q/load-image (str "resources/" letter ".png"))])))
+
 ; TODO: Need to introduce level property which can be incremented.
 ;       Possibly introduce increasing difficulty by making speed a property
 ;         of the bullets too.
 ;       Make probability of generating a bullet a property
 ;         that can be "mutated" to increase difficulty
+;       Screen metrics should be part of the board; this will
+;         help purify functions below.
+;       Consider reorganizing sprites.
 (defn create-board [w h m]
   "Returns a nested hashmap representing the entire state of the game"
   {:player         {:x (* 0.5 w)
                     :y (* 0.9 h)
-                    :sprite (q/load-image "resources/player.png")}
+                    :sprite (q/load-image "resources/player.png")
+                    :sound (.loadFile m "resources/explosion.wav")}
    :player-bullets {:locations []
                     :sprite (q/load-image "resources/pbullet.png")
                     :sound (.loadFile m "resources/pew.mp3")}
@@ -38,9 +47,15 @@
    :score           {:value 0
                      :sprites (load-digit-sprites)}
    :lives           {:value  3
-                     :sprite (q/load-image "resources/playersm.png")}})
+                     :sprite (q/load-image "resources/playersm.png")}
+   :letters         {:sprites (load-letter-sprites)}})
+
+(defn game-over? [{{value :value} :lives :as state}]
+  (zero? value))
 
 ; TODO: Better manage magic numbers.
+;       Improve collision detection for invader bullet and player
+;         or create specialized function.
 (defn shot? [{entity-x :x entity-y :y}
              {bullet-x :x bullet-y :y}]
   "Returns true if the bullet is within the hitbox of the entity"
@@ -54,19 +69,17 @@
   (let [hits (count (filter (fn [invader] (shot? invader bullet)) invaders))]
     (zero? hits)))
 
-(defn not-hit? [invader bullets]
-  "Returns true if the invader has not been hit by any of the bullets"
-  (let [hits (count (filter (fn [bullet] (shot? invader bullet)) bullets))]
+(defn not-hit? [entity bullets]
+  "Returns true if the entity has not been hit by any of the bullets"
+  (let [hits (count (filter (fn [bullet] (shot? entity bullet)) bullets))]
     (zero? hits)))
 
-; TODO: Check to see if enemy bullet has hit player
-(defn check-for-collisions [state]
+(defn check-invaders-shot [{{invaders  :invaders}  :patrol
+                            {locations :locations} :player-bullets
+                             score                 :score :as state}]
   "Returns a new version of game state removing all bullets
    and invaders involved in collisions"
-  (let [{{invaders  :invaders}  :patrol
-         {locations :locations} :player-bullets
-         score                  :score} state
-        bullets-left-over     (filter (fn [bullet] (no-hits? bullet invaders)) locations)
+  (let [bullets-left-over     (filter (fn [bullet] (no-hits? bullet invaders)) locations)
         invaders-left-over    (filter (fn [invader] (not-hit? invader locations)) invaders)
         points-scored         (* (- (count invaders) (count invaders-left-over)) 100)]
     (-> state
@@ -74,7 +87,22 @@
       (assoc-in [:patrol :invaders] invaders-left-over)
       (update-in [:score :value] (fn [score] (+ score points-scored))))))
 
-(defn check-invaders-left [{{invaders :invaders} :patrol :as state}]
+; TODO: Figure out how to destructure player and sound simulaneously.
+;       Figure out how to refactor this to make this pure and do sound
+;         output elsewhere.
+(defn check-player-shot [{{locations :locations} :invader-bullets
+                          player :player :as state}]
+  (let [sound (player :sound)]
+    (if (no-hits? player locations)
+      state
+      (do
+        (doto sound .rewind .play)
+        (Thread/sleep 5000)
+        (-> state
+          (assoc-in  [:invader-bullets :locations] [])
+          (update-in [:lives :value] dec))))))
+
+(defn check-invaders-cleared [{{invaders :invaders} :patrol :as state}]
   "Returns a new version of game state with a brand new patrol
    if no invaders remain or the state unchanged."
   (if (zero? (count invaders))
@@ -108,15 +136,12 @@
           (filter (fn [bullet] (< (bullet :y) h)))
           (map (fn [bullet] (update-in bullet [:y] (fn [y] (+ y 5))))))))))
 
-; TODO: DOH! Nasty bug here when no more invaders!
-;         need to check to see if none left.
 (defn change-direction? [invaders]
   (let [min-x (apply min (map #(:x %) invaders))
         max-x (apply max (map #(:x %) invaders))]
     (or (< min-x 75) (>= max-x 725))))
 
 ; TODO: Need to better manage magic numbers.
-;       Increase :dx as number of invaders decreases
 (defn move-patrol [{{curr-direction :direction
                      curr-dx        :dx
                      invaders       :invaders} :patrol :as state}]
@@ -160,14 +185,17 @@
 
 (defn update-board [state]
   "Primary hook which updates the entire game state before the next frame is drawn"
-  (-> state
-    (check-for-collisions)
-    (check-invaders-left)
-    (move-player-bullets)
-    (move-invader-bullets)
-    (move-patrol)
-    (generate-invader-bullets)
-    ))
+  (if (game-over? state)
+    state
+    (-> state
+      (check-player-shot)
+      (check-invaders-shot)
+      (check-invaders-cleared)
+      (move-player-bullets)
+      (move-invader-bullets)
+      (move-patrol)
+      (generate-invader-bullets)
+      )))
 
 ; TODO: Prevent the player from moving off screen
 (defn move-player [player dx]
@@ -175,7 +203,10 @@
   (update-in player [:x] (fn [x] (+ x dx))))
 
 ; TODO: Figure out why player stops moving after hitting the space key
-;       with left or right key still depressed.
+;         with left or right key still depressed.
+;       Need to better manage magic number, 48.
+;       Routine should only respond to arrow and space keys when game is
+;         not over.
 (defn key-pressed [{player :player
                    {sound :sound} :player-bullets :as state}
                    {key :key key-code :key-code}]
@@ -232,11 +263,20 @@
       (q/translate -32 0))
     (q/pop-matrix)))
 
+; TODO: Need to figure out how to stop game play completely
+(defn draw-game-over [{{sprites :sprites} :letters}]
+  (q/background 0)
+  (q/push-matrix)
+  (q/translate 50 400)
+  (doseq [letter "GAMEOVER"]
+    (q/image (sprites letter) 0 0)
+    (q/translate 100 0))
+  (q/pop-matrix))
+
 ; TODO: Figure out how to implement background music
 (defn draw-board [state]
   "Primary hook to render all entities to the screen"
-  (let [fc      (q/frame-count)
-        w       (q/width)
+  (let [w       (q/width)
         h       (q/height)
         {player          :player
          player-bullets  :player-bullets
@@ -246,12 +286,15 @@
          lives           :lives} state]
     (q/background 0)
 
-    (draw-player player)
-    (draw-bullets player-bullets)
-    (draw-bullets invader-bullets)
-    (draw-patrol patrol)
-    (draw-score score)
-    (draw-lives lives)
+    (if (game-over? state)
+      (draw-game-over state)
+      (do
+        (draw-player player)
+        (draw-bullets player-bullets)
+        (draw-bullets invader-bullets)
+        (draw-patrol patrol)
+        (draw-score score)
+        (draw-lives lives)))
     ))
 
 (defn setup []
