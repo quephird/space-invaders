@@ -1,8 +1,9 @@
-(ns space-invaders.core
+  (ns space-invaders.core
   (:import [ddf.minim Minim AudioPlayer])
   (:require [quil.core :as q :include-macros true]
             [quil.middleware :as m]))
 
+; TODO: Change name to make-invader-locations.
 (defn make-invaders []
   "Returns a vector of hashmaps each representing an invader"
   (into []
@@ -69,34 +70,48 @@
 (defn game-over? [{{value :value} :lives :as state}]
   (zero? value))
 
-; TODO: Better manage magic numbers.
-;       Improve collision detection for invader bullet and player
-;         or create specialized function.
-(defn shot? [{entity-x :x entity-y :y}
-             {bullet-x :x bullet-y :y}]
-  "Returns true if the bullet is within the hitbox of the entity"
-  (and (< (Math/abs (- bullet-x entity-x)) 32)
-       (< (Math/abs (- bullet-y entity-y)) 24)))
+(defn within-player-hitbox? [{player-x :x player-y :y}
+                             {bullet-x :x bullet-y :y}]
+  "Returns true if the bullet's coordinates fall within a
+   triangular region defined by range-x and range-y."
+  (let [range-x 24
+        range-y 32
+        dy      (+ range-y bullet-y (- player-y))]
+    (and (< (Math/abs (- bullet-y player-y)) range-y)
+         (< (Math/abs (- bullet-x player-x)) (/ (* dy range-x) 2 range-y)))))
 
-; TODO: The next three functions are smelly; there is definitely
-;       code repetition here but I wanted to get something working first.
-(defn no-hits? [bullet invaders]
-  "Returns true if the bullet has hit none of the invaders"
-  (let [hits (count (filter (fn [invader] (shot? invader bullet)) invaders))]
-    (zero? hits)))
+(defn within-invader-hitbox? [{invader-x :x invader-y :y}
+                              {bullet-x :x bullet-y :y}]
+  "Returns true if the bullet is within the hitbox of the invader"
+  (let [range-x 32
+        range-y 24]
+    (and (< (Math/abs (- bullet-x invader-x)) range-x)
+         (< (Math/abs (- bullet-y invader-y)) range-y))))
 
-(defn not-hit? [entity bullets]
-  "Returns true if the entity has not been hit by any of the bullets"
-  (let [hits (count (filter (fn [bullet] (shot? entity bullet)) bullets))]
-    (zero? hits)))
+(defn entity-shot? [entity bullet-locations hitbox-fn]
+  "Returns true if any of bullets are is within the entity's hitbox"
+  (->> bullet-locations
+    (filter (fn [location] (hitbox-fn entity location)))
+    count
+    (< 0)))
 
+(defn any-invader-shot? [bullet invaders]
+  "Returns true if the bullet has hit any of the invaders"
+  (->> invaders
+    (filter (fn [invader] (within-invader-hitbox? invader bullet)))
+    count
+    (< 0)))
+;  (let [hits (count (filter (fn [invader] (within-invader-hitbox? invader bullet)) invaders))]
+;    (< 0 hits)))
+
+; TODO: Figure out how to play sound when invader is shot.
 (defn check-invaders-shot [{{invaders  :invaders}  :patrol
                             {locations :locations} :player-bullets
                              score                 :score :as state}]
   "Returns a new version of game state removing all bullets
    and invaders involved in collisions"
-  (let [bullets-left-over     (filter (fn [bullet] (no-hits? bullet invaders)) locations)
-        invaders-left-over    (filter (fn [invader] (not-hit? invader locations)) invaders)
+  (let [bullets-left-over     (remove (fn [bullet] (any-invader-shot? bullet invaders)) locations)
+        invaders-left-over    (remove (fn [invader] (entity-shot? invader locations within-invader-hitbox?)) invaders)
         points-scored         (* (- (count invaders) (count invaders-left-over)) 100)]
     (-> state
       (assoc-in [:player-bullets :locations] bullets-left-over)
@@ -106,17 +121,18 @@
 ; TODO: Figure out how to destructure player and sound simulaneously.
 ;       Figure out how to refactor this to make this pure and do sound
 ;         output elsewhere.
-(defn check-player-shot [{{locations :locations} :invader-bullets
-                          player :player :as state}]
+(defn check-player-shot [{{bullet-locations :locations} :invader-bullets
+                           player :player :as state}]
   (let [sound (player :sound)]
-    (if (no-hits? player locations)
-      state
+    (if (entity-shot? player bullet-locations within-player-hitbox?)
       (do
         (doto sound .rewind .play)
         (Thread/sleep 5000)
         (-> state
           (assoc-in  [:invader-bullets :locations] [])
-          (update-in [:lives :value] dec))))))
+          (assoc-in  [:player-bullets :locations] [])
+          (update-in [:lives :value] dec)))
+      state)))
 
 (defn check-invaders-cleared [{{invaders :invaders} :patrol :as state}]
   "Returns a new version of game state with a brand new patrol
@@ -163,12 +179,8 @@
                      invaders       :invaders} :patrol :as state}]
   "Returns a new version of game state after moving the invader patrol"
   (let [change-direction (change-direction? invaders)
-        new-direction (if change-direction
-                        (- curr-direction)
-                        curr-direction)
-        dy            (if change-direction
-                        32
-                        0)
+        new-direction (if change-direction (- curr-direction) curr-direction)
+        dy            (if change-direction 32 0)
         new-dx        (/ 24 (count invaders))]
     (-> state
       (assoc-in [:patrol :direction] new-direction)
