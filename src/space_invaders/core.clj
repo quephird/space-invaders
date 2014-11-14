@@ -10,6 +10,7 @@
       {:x (* 75 (inc (rem i 8)))
        :y (+ 100 (* 75 (quot i 8)))})))
 
+; TODO: Consider procedurally generating sprites.
 (defn load-digit-sprites []
   (into {}
     (for [digit "0123456789"]
@@ -49,6 +50,21 @@
    :lives           {:value  3
                      :sprite (q/load-image "resources/playersm.png")}
    :letters         {:sprites (load-letter-sprites)}})
+
+; TODO: Reset player to original coordinates; in order to do that
+;         screen coords need to be part of the data structure.
+(defn reset-board [state]
+  "Returns a new version of the board with all 'mutable' values
+   in their orignal state."
+  (-> state
+    (assoc-in [:patrol :invaders] (make-invaders))
+    (assoc-in [:patrol :direction] 1)
+    (assoc-in [:patrol :dx] 1)
+    (assoc-in [:invader-bullets :locations] [])
+    (assoc-in [:player-bullets :locations] [])
+    (assoc-in [:score :value] 0)
+    (assoc-in [:lives :value] 3)
+    ))
 
 (defn game-over? [{{value :value} :lives :as state}]
   (zero? value))
@@ -217,6 +233,8 @@
   (let [dx             ({:left -10 :right 10} key 0)
         new-bullet     {:x (player :x) :y (- (player :y) 48)}]
     (cond
+      (and (game-over? state) (= :s key))
+        (reset-board state)
       (= 32 key-code)
         (do
           (doto sound .rewind .play)
@@ -263,7 +281,6 @@
       (q/translate -32 0))
     (q/pop-matrix)))
 
-; TODO: Need to figure out how to stop game play completely
 (defn draw-game-over [{{sprites :sprites} :letters}]
   (q/background 0)
   (q/push-matrix)
@@ -273,7 +290,9 @@
     (q/translate 100 0))
   (q/pop-matrix))
 
-; TODO: Figure out how to implement background music
+; TODO: Figure out how to implement background music.
+;       Need start screen with directions.
+;       Need background image.
 (defn draw-board [state]
   "Primary hook to render all entities to the screen"
   (let [w       (q/width)
