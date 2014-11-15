@@ -68,6 +68,9 @@
 (defn game-over? [{{value :value} :lives :as state}]
   (zero? value))
 
+(defn no-player-bullets? [{{locations :locations} :player-bullets}]
+  (zero? (count locations)))
+
 (defn within-player-hitbox? [{player-x :x player-y :y}
                              {bullet-x :x bullet-y :y}]
   "Returns true if the bullet's coordinates fall within a
@@ -143,16 +146,19 @@
       (assoc-in [:patrol :dx] 1))
     state))
 
+; TODO: Maybe make bullet-dy a property that can decrease to\
+;         increase dificulty.
 (defn move-player-bullets [state]
   "Returns a new version of game state by:
 
    * getting rid of player bullets that pass off screen, and
    * moving remaining player bullets upward"
-  (update-in state [:player-bullets :locations]
-    (fn [bullets]
-      (->> bullets
-        (filter (fn [bullet] (> (bullet :y) 0)))
-        (map (fn [bullet] (update-in bullet [:y] (fn [y] (- y 5)))))))))
+  (let [bullet-dy 10]
+    (update-in state [:player-bullets :locations]
+      (fn [bullets]
+        (->> bullets
+          (filter (fn [bullet] (> (bullet :y) 0)))
+          (map (fn [bullet] (update-in bullet [:y] (fn [y] (- y bullet-dy))))))))))
 
 (defn move-invader-bullets [{{h :h} :board :as state}]
   "Returns a new version of game state by:
@@ -208,6 +214,8 @@
     (-> state
       (update-in [:invader-bullets :locations] (fn [bullets] (concat bullets new-bullets))))))
 
+; TODO: Need routine to check if invader have gotten too close to ground;
+;         if so, player loses life.
 (defn update-board [state]
   "Primary hook which updates the entire game state before the next frame is drawn"
   (if (game-over? state)
@@ -251,9 +259,9 @@
     * moving the player left or right
     * generating a new bullet"
   (cond
-    (and (game-over? state) (= :s key))
+    (and (= :s key) (game-over? state))
       (reset-board state)
-    (= 32 key-code)
+    (and (= 32 key-code) (no-player-bullets? state))
       (do
         (doto sound .rewind .play)
         (add-player-bullet state))
