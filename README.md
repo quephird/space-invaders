@@ -30,15 +30,14 @@ This is a _very_ basic game, my first actually, and so is nowhere near being a r
 * Basic scoring
 * Bullets from the baddies
 * A patrol that moves downward and with increasing speed
-* Player bullets make initial PEW sound
+* Player bullets make PEW sound
+* Invader bullets make laser sound too
+* Player can die and has limited lives
 
 ## Goals
 
 I am hoping to implement at least some of the following:
 
-* Sounds from invader bullets
-* Player death
-* Limited player lives
 * Obstacles
 * Levels, with increasing difficulty
 * Baddies that sweep down and then back up
