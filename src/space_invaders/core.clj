@@ -1,9 +1,8 @@
-(ns space-invaders.core
+ (ns space-invaders.core
   (:import [ddf.minim Minim AudioPlayer])
   (:require [quil.core :as q :include-macros true]
             [quil.middleware :as m]))
 
-; TODO: Change name to make-invader-locations.
 (defn make-invaders []
   "Returns a vector of hashmaps each representing an invader"
   (into []
@@ -191,7 +190,7 @@
             )))))
 
 ; TODO: Reconsider whether this needs to be a standalone function.
-(defn generate-new-bullet [{x :x y :y}]
+(defn make-invader-bullet [{x :x y :y}]
   "Randomly creates a new bullet located relative to
    the inbound invader and patrol coordinates"
   (if (> (q/random 1) 0.995)
@@ -201,7 +200,7 @@
   (let [{{invaders :invaders} :patrol
          {sound :sound}       :invader-bullets} state
         new-bullets (->> invaders
-                      (map (fn [invader] (generate-new-bullet invader)))
+                      (map (fn [invader] (make-invader-bullet invader)))
                       (filter #(not (nil? %)))
                       (into []))]
     (dotimes [_ (count new-bullets)]
@@ -223,39 +222,45 @@
       (generate-invader-bullets)
       )))
 
-; TODO: Prevent the player from moving off screen;
-;         which will be much easier to do since board metrics are
-;         part of state object.
-(defn move-player [player dx]
-  "Returns a new version of the player hashmap representing a change in position"
-  (update-in player [:x] (fn [x] (+ x dx))))
+(defn move-player [{{x   :x} :player
+                    {w   :w} :board  :as state}
+                    {key :key        :as event}]
+  "Returns a new version of the board state representing
+   a change in position of the player"
+  (let [margin 75
+        dx (cond
+              (and (= key :left) (> x margin)) -10
+              (and (= key :right) (< x (- w margin))) 10
+              :else 0)]
+    (update-in state [:player :x] (fn [x] (+ x dx)))))
+
+(defn add-player-bullet [{{x :x y :y} :player :as state}]
+  (let [pixels-above-player 48
+        new-bullet {:x x :y (- y pixels-above-player)}]
+    (update-in state [:player-bullets :locations] conj new-bullet)))
 
 ; TODO: Figure out why player stops moving after hitting the space key
 ;         with left or right key still depressed.
-;       Need to better manage magic number, 48.
-;       Routine should only respond to arrow and space keys when game is
-;         not over.
-(defn key-pressed [{player        :player
-                   {sound :sound} :player-bullets :as state}
-                   {key           :key
-                    key-code      :key-code       :as event}]
+;       Figure out how to move sound clip playing out into main draw routine.
+;       Figure out how to limit to one live bullet at a time.
+(defn key-pressed [{{sound :sound} :player-bullets :as state}
+                    {key           :key
+                     key-code      :key-code       :as event}]
   "Primary hook to return new version of game state taking into account:
 
     * moving the player left or right
     * generating a new bullet"
-  (let [dx             ({:left -10 :right 10} key 0)
-        new-bullet     {:x (player :x) :y (- (player :y) 48)}]
-    (cond
-      (and (game-over? state) (= :s key))
-        (reset-board state)
-      (= 32 key-code)
-        (do
-          (doto sound .rewind .play)
-          (update-in state [:player-bullets :locations] conj new-bullet))
-      (contains? #{:left :right} key)
-        (update-in state [:player :x] (fn [x] (+ x dx)))
-      :else
-        state)))
+  (cond
+    (and (game-over? state) (= :s key))
+      (reset-board state)
+    (= 32 key-code)
+      (do
+        (doto sound .rewind .play)
+        (add-player-bullet state))
+    (contains? #{:left :right} key)
+      (move-player state event)
+    :else
+      state))
 
 (defn draw-player [{{x      :x
                      y      :y
@@ -286,6 +291,7 @@
     (q/translate 32 0))
   (q/pop-matrix))
 
+; TODO: Again with the magic numbers
 (defn draw-lives [{{value  :value
                     sprite :sprite} :lives
                    {w      :w}      :board}]
@@ -297,6 +303,8 @@
     (q/translate -32 0))
   (q/pop-matrix))
 
+; TODO: Again with the magic numbers
+;       Possibly play sad trombone clip. (BUT ONLY ONCE!)
 (defn draw-game-over [{{sprites :sprites} :letters}]
   (q/background 0)
   (q/push-matrix)
