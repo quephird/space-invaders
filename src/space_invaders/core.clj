@@ -7,7 +7,8 @@
   "Returns a vector of hashmaps each representing an invader"
   (into []
     (for [i (range 24)]
-      {:x (* 75 (inc (rem i 8)))
+      {:idx i
+       :x (* 75 (inc (rem i 8)))
        :y (+ 100 (* 75 (quot i 8)))})))
 
 ; TODO: Consider procedurally generating sprites.
@@ -27,6 +28,7 @@
 ;       Make probability of generating a bullet a property
 ;         that can be "mutated" to increase difficulty
 ;       Consider reorganizing sprites.
+;       Need provision for random big invader for extra points
 (defn create-board [w h m]
   "Returns a nested hashmap representing the entire state of the game"
   {:board          {:w          w
@@ -41,7 +43,8 @@
    :patrol         {:invaders   (make-invaders)
                     :direction  1
                     :dx         1
-                    :sprite     (q/load-image "resources/invader.png")}
+                    :sprites    [(q/load-image "resources/invader1.png")
+                                 (q/load-image "resources/invader2.png")]}
    :invader-bullets {:locations []
                      :sprite    (q/load-image "resources/ibullet.png")
                      :sound     (.loadFile m "resources/laser.wav")}
@@ -82,7 +85,7 @@
          (< (Math/abs (- bullet-x player-x)) (/ (* dy range-x) 2 range-y)))))
 
 (defn within-invader-hitbox? [{invader-x :x invader-y :y}
-                              {bullet-x :x bullet-y :y}]
+                              {bullet-x :x  bullet-y :y}]
   "Returns true if the bullet is within the hitbox of the invader"
   (let [range-x 32
         range-y 24]
@@ -120,6 +123,7 @@
 ; TODO: Figure out how to destructure player and sound simulaneously.
 ;       Figure out how to refactor this to make this pure and do sound
 ;         output elsewhere.
+;       Figure out how to give extra points for grazing bullets.
 (defn check-player-shot [{{bullet-locations :locations} :invader-bullets
                           {w :w h :h} :board
                            player :player :as state}]
@@ -171,6 +175,7 @@
         (filter (fn [bullet] (< (bullet :y) h)))
         (map (fn [bullet] (update-in bullet [:y] (fn [y] (+ y 5)))))))))
 
+; TODO: Deal better with magic numbers here
 (defn change-direction? [invaders]
   (let [min-x (apply min (map #(:x %) invaders))
         max-x (apply max (map #(:x %) invaders))]
@@ -184,7 +189,7 @@
   (let [change-direction (change-direction? invaders)
         new-direction (if change-direction (- curr-direction) curr-direction)
         dy            (if change-direction 32 0)
-        new-dx        (/ 24 (count invaders))]
+        new-dx        (/ 12 (count invaders))]
     (-> state
       (assoc-in [:patrol :direction] new-direction)
       (assoc-in [:patrol :dx] new-dx)
@@ -199,7 +204,7 @@
 (defn make-invader-bullet [{x :x y :y}]
   "Randomly creates a new bullet located relative to
    the inbound invader and patrol coordinates"
-  (if (> (q/random 1) 0.995)
+  (if (> (q/random 1) 0.998)
     {:x x :y y}))
 
 (defn generate-invader-bullets [state]
@@ -283,11 +288,18 @@
 
 ; TODO: Think about how to draw exploded invaders,
 ;         possibly introduce :status property for each invader
+;       Need to draw big ship.
 (defn draw-patrol [{{invaders :invaders
-                     sprite   :sprite} :patrol}]
+                     sprites  :sprites} :patrol}]
   "Renders the entire invader patrol to the screen"
-    (doseq [{invader-x :x invader-y :y} invaders]
-      (q/image sprite invader-x invader-y)))
+  ; This tick insures that sprites alternate over time...
+  (let [tick (quot (q/frame-count) 30)]
+    (doseq [{invader-idx :idx
+             invader-x   :x
+             invader-y   :y} invaders]
+      ; ... and this logic insures that sprites alterate across the patrol.
+      (let [sprite-idx (mod (+ tick invader-idx (quot invader-idx 8)) 2)]
+        (q/image (sprites sprite-idx) invader-x invader-y)))))
 
 (defn draw-score [{{value   :value
                     sprites :sprites} :score}]
@@ -322,13 +334,24 @@
     (q/translate 100 0))
   (q/pop-matrix))
 
+; TODO: Initalize board with set number of stars;
+;         in update routine, move stars upward, randomly select whether or not to add
+;         star to bottom, draw them here.
+(defn draw-background [{{w :w h :h} :board}]
+;  (let [])
+  (q/background 0)
+  (q/stroke-weight 4)
+  (dotimes [_ 20]
+    (q/stroke (q/random 255) 255 255)
+    (q/point (q/random w) (q/random h))))
+
 ; TODO: Figure out how to implement background music.
 ;       Need start screen with directions.
 ;       Need background image.
 (defn draw-board [{player-bullets  :player-bullets
                    invader-bullets :invader-bullets :as state}]
   "Primary hook to render all entities to the screen"
-  (q/background 0)
+  (draw-background state)
 
   (if (game-over? state)
     (draw-game-over state)
@@ -347,6 +370,7 @@
         h (q/height)
         m (Minim.)]
     (q/smooth)
+    (q/color-mode :hsb)
     (q/image-mode :center)
     (create-board w h m)))
 
