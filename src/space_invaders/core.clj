@@ -1,7 +1,14 @@
-(ns space-invaders.core
+  (ns space-invaders.core
   (:import [ddf.minim Minim AudioPlayer])
   (:require [quil.core :as q :include-macros true]
             [quil.middleware :as m]))
+
+(defn make-stars [w h]
+  "Returns a vector of hashmaps each representing a background star"
+  (into []
+    (for [i (range 100)]
+      {:x (q/random w)
+       :y (q/random h)})))
 
 (defn make-invaders []
   "Returns a vector of hashmaps each representing an invader"
@@ -33,6 +40,7 @@
   "Returns a nested hashmap representing the entire state of the game"
   {:board          {:w          w
                     :h          h}
+   :stars           (make-stars w h)
    :player         {:x          (* 0.5 w)
                     :y          (* 0.9 h)
                     :sprite     (q/load-image "resources/player.png")
@@ -150,6 +158,17 @@
       (assoc-in [:patrol :dx] 1))
     state))
 
+(defn move-stars [{stars :stars :as state}]
+  (assoc-in state [:stars]
+    (into []
+      (map (fn [star] (update-in star [:y] (fn [y] (- y 2)))) stars))))
+
+(defn update-stars [{stars :stars :as state}]
+  (let [new-star (if (< (q/random 1) 0.25) [{:x (q/random 800) :y 800}])]
+    (-> state
+      (assoc-in [:stars] (into [] (remove (fn [{y :y}] (< y 0)) stars)))
+      (assoc-in [:stars] (concat stars new-star)))))
+
 ; TODO: Maybe make bullet-dy a property that can decrease to\
 ;         increase dificulty.
 (defn move-player-bullets [state]
@@ -233,6 +252,8 @@
       (move-invader-bullets)
       (move-patrol)
       (generate-invader-bullets)
+      (move-stars)
+      (update-stars)
       )))
 
 (defn move-player [{{x   :x} :player
@@ -338,19 +359,20 @@
 ; TODO: Initalize board with set number of stars;
 ;         in update routine, move stars upward, randomly select whether or not to add
 ;         star to bottom, draw them here.
-(defn draw-background [{{w :w h :h} :board}]
+(defn draw-stars [{{w :w h :h} :board
+                   stars       :stars}]
   (q/background 0)
   (q/stroke-weight 4)
-  (dotimes [_ 20]
+  (doseq [{x :x y :y} stars]
     (q/stroke (q/random 255) 255 255)
-    (q/point (q/random w) (q/random h))))
+    (q/point x y)))
 
 ; TODO: Figure out how to implement background music.
 ;       Need start screen with directions.
 (defn draw-board [{player-bullets  :player-bullets
                    invader-bullets :invader-bullets :as state}]
   "Primary hook to render all entities to the screen"
-  (draw-background state)
+  (draw-stars state)
 
   (if (game-over? state)
     (draw-game-over state)
