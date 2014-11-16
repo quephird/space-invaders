@@ -1,4 +1,4 @@
- (ns space-invaders.core
+(ns space-invaders.core
   (:import [ddf.minim Minim AudioPlayer])
   (:require [quil.core :as q :include-macros true]
             [quil.middleware :as m]))
@@ -175,18 +175,18 @@
         (filter (fn [bullet] (< (bullet :y) h)))
         (map (fn [bullet] (update-in bullet [:y] (fn [y] (+ y 5)))))))))
 
-; TODO: Deal better with magic numbers here
-(defn change-direction? [invaders]
-  (let [min-x (apply min (map #(:x %) invaders))
-        max-x (apply max (map #(:x %) invaders))]
-    (or (< min-x 75) (>= max-x 725))))
+(defn change-direction? [{{w        :w}        :board
+                          {invaders :invaders} :patrol}]
+  (let [margin 75
+        min-x  (apply min (map #(:x %) invaders))
+        max-x  (apply max (map #(:x %) invaders))]
+    (or (< min-x margin) (>= max-x (- w margin)))))
 
-; TODO: Need to better manage magic numbers.
 (defn move-patrol [{{curr-direction :direction
                      curr-dx        :dx
                      invaders       :invaders} :patrol :as state}]
   "Returns a new version of game state after moving the invader patrol"
-  (let [change-direction (change-direction? invaders)
+  (let [change-direction (change-direction? state)
         new-direction (if change-direction (- curr-direction) curr-direction)
         dy            (if change-direction 32 0)
         new-dx        (/ 12 (count invaders))]
@@ -311,34 +311,34 @@
     (q/translate 32 0))
   (q/pop-matrix))
 
-; TODO: Again with the magic numbers
 (defn draw-lives [{{value  :value
                     sprite :sprite} :lives
                    {w      :w}      :board}]
   "Renders the number of lives left for the player"
-  (q/push-matrix)
-  (q/translate (- w 32) 32)
-  (dotimes [_ value]
-    (q/image sprite 0 0)
-    (q/translate -32 0))
-  (q/pop-matrix))
+  (let [sprite-width 32]
+    (q/push-matrix)
+    (q/translate (- w sprite-width) sprite-width)
+    (dotimes [_ value]
+      (q/image sprite 0 0)
+      (q/translate (- sprite-width) 0))
+    (q/pop-matrix)))
 
-; TODO: Again with the magic numbers
-;       Possibly play sad trombone clip. (BUT ONLY ONCE!)
-(defn draw-game-over [{{sprites :sprites} :letters}]
-  (q/background 0)
-  (q/push-matrix)
-  (q/translate 50 400)
-  (doseq [letter "GAMEOVER"]
-    (q/image (sprites letter) 0 0)
-    (q/translate 100 0))
-  (q/pop-matrix))
+; TODO: Possibly play some thing amusing like a sad trombone clip. (BUT ONLY ONCE!)
+(defn draw-game-over [{{h       :h} :board
+                       {sprites :sprites} :letters}]
+  (let [letter-width 100]
+    (q/background 0)
+    (q/push-matrix)
+    (q/translate (* 0.5 letter-width) (* 0.5 h))
+    (doseq [letter "GAMEOVER"]
+      (q/image (sprites letter) 0 0)
+      (q/translate letter-width 0))
+    (q/pop-matrix)))
 
 ; TODO: Initalize board with set number of stars;
 ;         in update routine, move stars upward, randomly select whether or not to add
 ;         star to bottom, draw them here.
 (defn draw-background [{{w :w h :h} :board}]
-;  (let [])
   (q/background 0)
   (q/stroke-weight 4)
   (dotimes [_ 20]
@@ -347,7 +347,6 @@
 
 ; TODO: Figure out how to implement background music.
 ;       Need start screen with directions.
-;       Need background image.
 (defn draw-board [{player-bullets  :player-bullets
                    invader-bullets :invader-bullets :as state}]
   "Primary hook to render all entities to the screen"
