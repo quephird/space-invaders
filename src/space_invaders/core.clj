@@ -1,4 +1,4 @@
-  (ns space-invaders.core
+(ns space-invaders.core
   (:import [ddf.minim Minim AudioPlayer])
   (:require [quil.core :as q :include-macros true]
             [quil.middleware :as m]))
@@ -12,11 +12,13 @@
 
 (defn make-invaders []
   "Returns a vector of hashmaps each representing an invader"
-  (into []
-    (for [i (range 24)]
-      {:idx i
-       :x (* 75 (inc (rem i 8)))
-       :y (+ 100 (* 75 (quot i 8)))})))
+  (let [start-x 0
+        start-y 150]
+    (into []
+      (for [i (range 24)]
+        {:idx i
+         :x (+ start-x (* 75 (inc (rem i 8))))
+         :y (+ start-y (* 75 (quot i 8)))}))))
 
 ; TODO: Consider procedurally generating sprites.
 (defn load-digit-sprites []
@@ -56,6 +58,14 @@
    :invader-bullets {:locations []
                      :sprite    (q/load-image "resources/ibullet.png")
                      :sound     (.loadFile m "resources/laser.wav")}
+   :mystery-ship    {:location  nil
+                     :sprites   [(q/load-image "resources/mystery1.png")
+                                 (q/load-image "resources/mystery2.png")
+                                 (q/load-image "resources/mystery3.png")
+                                 (q/load-image "resources/mystery4.png")
+                                 (q/load-image "resources/mystery5.png")
+                                 (q/load-image "resources/mystery6.png")]
+                     :sound      (.loadFile m "resources/klaxon.mp3")}
    :score           {:value     0
                      :sprites   (load-digit-sprites)}
    :lives           {:value     3
@@ -163,6 +173,7 @@
     (into []
       (map (fn [star] (update-in star [:y] (fn [y] (- y 2)))) stars))))
 
+; TODO: destructure width and height to rid of magic numbers
 (defn update-stars [{stars :stars :as state}]
   (let [new-star (if (< (q/random 1) 0.25) [{:x (q/random 800) :y 800}])]
     (-> state
@@ -219,6 +230,11 @@
             (map (fn [invader] (update-in invader [:y] (fn [y] (+ y dy))))))
             )))))
 
+(defn move-mystery-ship [{{location :location} :mystery-ship :as state}]
+  (if (nil? location)
+    state
+    (update-in state [:mystery-ship :location :x] (fn [x] (+ x 5)))))
+
 ; TODO: Reconsider whether this needs to be a standalone function.
 (defn make-invader-bullet [{x :x y :y}]
   "Randomly creates a new bullet located relative to
@@ -238,6 +254,40 @@
     (-> state
       (update-in [:invader-bullets :locations] (fn [bullets] (concat bullets new-bullets))))))
 
+(defn generate-mystery-ship-bullets [{{location :location} :mystery-ship
+                                      {sound    :sound}    :invader-bullets :as state}]
+  (cond
+    (nil? location)
+      state
+    (> (q/random 1) 0.1)
+      state
+    :else
+      ; TODO: Decide if I want to still want to generate only one bullet at a time.
+      (let [new-bullets (into [] (map identity [location]))]
+        (dotimes [_ (count new-bullets)]
+          (doto sound .rewind .play))
+        (-> state
+          (update-in [:invader-bullets :locations] (fn [bullets] (concat bullets new-bullets)))))))
+
+; TODO: This is a little icky but it works for now.
+(defn update-mystery-ship [{{w        :w}        :board
+                            {location :location
+                             sound    :sound}    :mystery-ship :as state}]
+  (cond
+    (nil? location)
+      (if (zero? (mod (q/frame-count) 1500))
+        (do
+          (doto sound .rewind .loop)
+          (assoc-in state [:mystery-ship :location] {:x -128 :y 75})
+          )
+        state)
+    :else
+      (if (> (:x location) (+ w 128))
+        (do
+          (doto sound .play)
+          (assoc-in state [:mystery-ship :location] nil))
+         state)))
+
 ; TODO: Need routine to check if invader have gotten too close to ground;
 ;         if so, player loses life.
 (defn update-board [state]
@@ -248,12 +298,15 @@
       (check-player-shot)
       (check-invaders-shot)
       (check-invaders-cleared)
-      (move-player-bullets)
-      (move-invader-bullets)
-      (move-patrol)
-      (generate-invader-bullets)
       (move-stars)
+      (move-invader-bullets)
+      (move-player-bullets)
+      (move-patrol)
+      (move-mystery-ship)
       (update-stars)
+      (generate-invader-bullets)
+      (generate-mystery-ship-bullets)
+      (update-mystery-ship)
       )))
 
 (defn move-player [{{x   :x} :player
@@ -261,7 +314,7 @@
                     {key :key        :as event}]
   "Returns a new version of the board state representing
    a change in position of the player"
-  (let [margin 75
+  (let [margin 125
         dx (cond
               (and (= key :left) (> x margin)) -10
               (and (= key :right) (< x (- w margin))) 10
@@ -322,6 +375,13 @@
       (let [sprite-idx (mod (+ tick invader-idx (quot invader-idx 8)) 2)]
         (q/image (sprites sprite-idx) invader-x invader-y)))))
 
+(defn draw-mystery-ship [{{location :location
+                           sprites  :sprites} :mystery-ship}]
+  (if (not (nil? location))
+    (let [tick (quot (q/frame-count) 10)
+          idx  (mod tick (count sprites))]
+      (q/image (sprites idx) (:x location) (:y location)))))
+
 (defn draw-score [{{value   :value
                     sprites :sprites} :score}]
   "Renders the current score to the screen"
@@ -369,6 +429,8 @@
 
 ; TODO: Figure out how to implement background music.
 ;       Need start screen with directions.
+;       Need to implement levels
+;       Need to implement boss level
 (defn draw-board [{player-bullets  :player-bullets
                    invader-bullets :invader-bullets :as state}]
   "Primary hook to render all entities to the screen"
@@ -381,6 +443,7 @@
       (draw-bullets player-bullets)
       (draw-bullets invader-bullets)
       (draw-patrol state)
+      (draw-mystery-ship state)
       (draw-score state)
       (draw-lives state))))
 

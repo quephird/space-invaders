@@ -22,7 +22,7 @@ Once in the Clojure REPL, issue the following:
 
 This is a _very_ basic game, my first actually, and so is nowhere near being a real game. So far, the only features that I've implemented are:
 
-* A moving player
+* A moving player not allowed to go beyond margins
 * A moving patrol of baddies
 * SPRITES!!!!
 * Firing bullets at the baddies
@@ -33,6 +33,7 @@ This is a _very_ basic game, my first actually, and so is nowhere near being a r
 * Player bullets make PEW sound
 * Invader bullets make laser sound too
 * Player can die and has limited lives
+* Scrolling background of stars
 
 ## Goals
 
@@ -40,10 +41,12 @@ I am hoping to implement at least some of the following:
 
 * Obstacles
 * Levels, with increasing difficulty
+* Boss levels
+* Bonus ships
 * Baddies that sweep down and then back up
 * High score maintenance
 * Background music
-* Background graphics
+* Extra lives at critical scores
 
 ## Useful links
 
