@@ -31,6 +31,11 @@
     (for [letter "GAMEOVR"]
       [letter (q/load-image (str "resources/" letter ".png"))])))
 
+(defn load-mystery-ship-sprites []
+  (into []
+    (for [i (range 1 6)]
+      (q/load-image (str "resources/mystery" i ".png")))))
+
 ; TODO: Need to introduce level property which can be incremented.
 ;       Possibly introduce increasing difficulty by making speed a property
 ;         of the bullets too.
@@ -59,12 +64,7 @@
                      :sprite    (q/load-image "resources/ibullet.png")
                      :sound     (.loadFile m "resources/laser.wav")}
    :mystery-ship    {:location  nil
-                     :sprites   [(q/load-image "resources/mystery1.png")
-                                 (q/load-image "resources/mystery2.png")
-                                 (q/load-image "resources/mystery3.png")
-                                 (q/load-image "resources/mystery4.png")
-                                 (q/load-image "resources/mystery5.png")
-                                 (q/load-image "resources/mystery6.png")]
+                     :sprites   (load-mystery-ship-sprites)
                      :sound      (.loadFile m "resources/klaxon.mp3")}
    :score           {:value     0
                      :sprites   (load-digit-sprites)}
