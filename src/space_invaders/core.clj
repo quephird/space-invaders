@@ -173,9 +173,9 @@
     (into []
       (map (fn [star] (update-in star [:y] (fn [y] (- y 2)))) stars))))
 
-; TODO: destructure width and height to rid of magic numbers
-(defn update-stars [{stars :stars :as state}]
-  (let [new-star (if (< (q/random 1) 0.25) [{:x (q/random 800) :y 800}])]
+(defn update-stars [{{w :w h :h} :board
+                      stars      :stars :as state}]
+  (let [new-star (if (< (q/random 1) 0.25) [{:x (q/random w) :y h}])]
     (-> state
       (assoc-in [:stars] (into [] (remove (fn [{y :y}] (< y 0)) stars)))
       (assoc-in [:stars] (concat stars new-star)))))
@@ -458,6 +458,8 @@
     (q/image-mode :center)
     (create-board w h m)))
 
+; TODO: Figure out how to configure this project such that
+;         lein uberjar produces an executable jar.
 (q/defsketch space-invaders
   :title       "space invaders"
   :setup       setup
