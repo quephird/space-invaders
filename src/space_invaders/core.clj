@@ -259,11 +259,10 @@
   (cond
     (nil? location)
       state
-    (> (q/random 1) 0.1)
+    (> (q/random 1) 0.05)
       state
     :else
-      ; TODO: Decide if I want to still want to generate only one bullet at a time.
-      (let [new-bullets (into [] (map identity [location]))]
+      (let [new-bullets (into [] (map (fn [n] (update-in location [:x] (fn [x] (+ x n)))) [-30 0 30]))]
         (dotimes [_ (count new-bullets)]
           (doto sound .rewind .play))
         (-> state
@@ -275,7 +274,7 @@
                              sound    :sound}    :mystery-ship :as state}]
   (cond
     (nil? location)
-      (if (zero? (mod (q/frame-count) 1500))
+      (if (zero? (mod (q/frame-count) 1000))
         (do
           (doto sound .rewind .loop)
           (assoc-in state [:mystery-ship :location] {:x -128 :y 75})
