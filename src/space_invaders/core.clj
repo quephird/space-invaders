@@ -36,8 +36,7 @@
     (for [i (range 1 6)]
       (q/load-image (str "resources/mystery" i ".png")))))
 
-; TODO: Need to introduce level property which can be incremented.
-;       Possibly introduce increasing difficulty by making speed a property
+; TODO: Possibly introduce increasing difficulty by making speed a property
 ;         of the bullets too.
 ;       Make probability of generating a bullet a property
 ;         that can be "mutated" to increase difficulty
@@ -46,7 +45,8 @@
 (defn create-board [w h m]
   "Returns a nested hashmap representing the entire state of the game"
   {:board          {:w          w
-                    :h          h}
+                    :h          h
+                    :music      (.loadFile m "resources/level.mp3")}
    :stars           (make-stars w h)
    :player         {:x          (* 0.5 w)
                     :y          (* 0.9 h)
@@ -298,14 +298,14 @@
     (nil? location)
       (if (zero? (mod (q/frame-count) 1000))
         (do
-          (doto sound .rewind .loop)
+          (doto sound .rewind .unmute .loop)
           (assoc-in state [:mystery-ship :location] {:x -128 :y 75})
           )
         state)
     :else
       (if (> (:x location) (+ w 128))
         (do
-          (doto sound .play)
+          (doto sound .mute .play)
           (assoc-in state [:mystery-ship :location] nil))
          state)))
 
@@ -369,6 +369,11 @@
     :else
       state))
 
+(defn play-background-music [{{music :music} :board :as state}]
+  (if (not (.isLooping music))
+    (doto music .unmute .rewind .loop))
+  state)
+
 (defn draw-player [{{x      :x
                      y      :y
                      sprite :sprite} :player}]
@@ -424,12 +429,14 @@
     (q/pop-matrix)))
 
 ; TODO: Possibly play some thing amusing like a sad trombone clip. (BUT ONLY ONCE!)
-(defn draw-game-over [{{h       :h} :board
+(defn draw-game-over [{{music   :music
+                        h       :h} :board
                        {sprites :sprites} :letters}]
   (let [letter-width 100]
     (q/background 0)
     (q/push-matrix)
     (q/translate (* 0.5 letter-width) (* 0.5 h))
+    (doto music .mute .play)
     (doseq [letter "GAMEOVER"]
       (q/image (sprites letter) 0 0)
       (q/translate letter-width 0))
@@ -453,11 +460,11 @@
 (defn draw-board [{player-bullets  :player-bullets
                    invader-bullets :invader-bullets :as state}]
   "Primary hook to render all entities to the screen"
-  (draw-stars state)
-
   (if (game-over? state)
     (draw-game-over state)
     (do
+      (play-background-music state)
+      (draw-stars state)
       (draw-player state)
       (draw-bullets player-bullets)
       (draw-bullets invader-bullets)
@@ -477,9 +484,16 @@
     (q/image-mode :center)
     (create-board w h m)))
 
+(defn on-close [{{music :music} :board
+                 {sound :sound} :mystery-ship :as state}]
+  "Primary hook when sketch is closed to insure that sounds are stopped
+   without shutting down the entire JVM."
+  (doto music .mute .play)
+  (doto sound .mute .play)
+  state)
+
 ; TODO: Figure out how to configure this project such that
 ;         lein uberjar produces an executable jar.
-;       Need to insure all sounds stop playing upon exit from game.
 (q/defsketch space-invaders
   :title       "space invaders"
   :setup       setup
@@ -487,4 +501,5 @@
   :size        [800 800]
   :update      update-board
   :key-pressed key-pressed
+  :on-close    on-close
   :middleware  [m/fun-mode])
