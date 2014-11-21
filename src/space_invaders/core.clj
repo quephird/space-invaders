@@ -59,7 +59,8 @@
                     :direction  1
                     :dx         1
                     :sprites    [(q/load-image "resources/invader1.png")
-                                 (q/load-image "resources/invader2.png")]}
+                                 (q/load-image "resources/invader2.png")]
+                    :sound      (.loadFile m "resources/boom.wav")}
    :invader-bullets {:locations []
                      :sprite    (q/load-image "resources/ibullet.png")
                      :sound     (.loadFile m "resources/laser.wav")}
@@ -125,14 +126,18 @@
     (< 0)))
 
 ; TODO: Figure out how to play sound when invader is shot.
-(defn check-invaders-shot [{{invaders  :invaders}  :patrol
+(defn check-invaders-shot [{{sound     :sound
+                             invaders  :invaders}  :patrol
                             {locations :locations} :player-bullets
                              score                 :score :as state}]
   "Returns a new version of game state removing all bullets
    and invaders involved in collisions"
   (let [bullets-left-over     (remove (fn [bullet] (any-invader-shot? bullet invaders)) locations)
-        invaders-left-over    (remove (fn [invader] (entity-shot? invader locations within-invader-hitbox?)) invaders)
-        points-scored         (* (- (count invaders) (count invaders-left-over)) 100)]
+        invaders-shot         (filter (fn [invader] (entity-shot? invader locations within-invader-hitbox?)) invaders)
+        invaders-left-over    (remove (set invaders-shot) invaders)
+        points-scored         (* (count invaders-shot) 100)]
+    (doseq [_ invaders-shot]
+      (doto sound .rewind .play))
     (-> state
       (assoc-in [:player-bullets :locations] bullets-left-over)
       (assoc-in [:patrol :invaders] invaders-left-over)
