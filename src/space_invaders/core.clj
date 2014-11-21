@@ -60,7 +60,8 @@
                     :dx         1
                     :sprites    [(q/load-image "resources/invader1.png")
                                  (q/load-image "resources/invader2.png")]
-                    :sound      (.loadFile m "resources/boom.wav")}
+                    :sounds     {:boom    (.loadFile m "resources/boom.wav")
+                                 :landing (.loadFile m "resources/landing.wav")}}
    :invader-bullets {:locations []
                      :sprite    (q/load-image "resources/ibullet.png")
                      :sound     (.loadFile m "resources/laser.wav")}
@@ -69,6 +70,7 @@
                      :sound      (.loadFile m "resources/klaxon.mp3")}
    :score           {:value     0
                      :sprites   (load-digit-sprites)}
+   :level           {:value     0}
    :lives           {:value     3
                      :sprite    (q/load-image "resources/playersm.png")}
    :letters         {:sprites   (load-letter-sprites)}})
@@ -89,6 +91,10 @@
 
 (defn game-over? [{{value :value} :lives :as state}]
   (zero? value))
+
+(defn invaders-reached-bottom? [{{h        :h}        :board
+                                 {invaders :invaders} :patrol :as state}]
+  (->> invaders (map :y) (apply max) (< (- h 100))))
 
 (defn no-player-bullets? [{{locations :locations} :player-bullets}]
   (zero? (count locations)))
@@ -126,7 +132,7 @@
     (< 0)))
 
 ; TODO: Figure out how to play sound when invader is shot.
-(defn check-invaders-shot [{{sound     :sound
+(defn check-invaders-shot [{{{sound    :boom}      :sounds
                              invaders  :invaders}  :patrol
                             {locations :locations} :player-bullets
                              score                 :score :as state}]
@@ -163,11 +169,22 @@
           (update-in [:lives :value] dec)))
       state)))
 
+(defn check-invaders-reached-bottom [{{h        :h}        :board
+                                      {{sound :landing}    :sounds
+                                       invaders :invaders} :patrol :as state}]
+  (if (invaders-reached-bottom? state)
+    (do
+      (doto sound .rewind .play)
+      (Thread/sleep 5000)
+      (assoc-in state [:lives :value] 0))
+    state))
+
 (defn check-invaders-cleared [{{invaders :invaders} :patrol :as state}]
   "Returns a new version of game state with a brand new patrol
    if no invaders remain or the state unchanged."
   (if (zero? (count invaders))
     (-> state
+      (update-in [:level :value] inc)
       (assoc-in [:patrol :invaders] (make-invaders))
       (assoc-in [:patrol :direction] 1)
       (assoc-in [:patrol :dx] 1))
@@ -292,14 +309,13 @@
           (assoc-in state [:mystery-ship :location] nil))
          state)))
 
-; TODO: Need routine to check if invader have gotten too close to ground;
-;         if so, player loses life.
 (defn update-board [state]
   "Primary hook which updates the entire game state before the next frame is drawn"
   (if (game-over? state)
     state
     (-> state
       (check-player-shot)
+      (check-invaders-reached-bottom)
       (check-invaders-shot)
       (check-invaders-cleared)
       (move-stars)
@@ -366,7 +382,6 @@
 
 ; TODO: Think about how to draw exploded invaders,
 ;         possibly introduce :status property for each invader
-;       Need to draw big ship.
 (defn draw-patrol [{{invaders :invaders
                      sprites  :sprites} :patrol}]
   "Renders the entire invader patrol to the screen"
@@ -464,6 +479,7 @@
 
 ; TODO: Figure out how to configure this project such that
 ;         lein uberjar produces an executable jar.
+;       Need to insure all sounds stop playing upon exit from game.
 (q/defsketch space-invaders
   :title       "space invaders"
   :setup       setup
