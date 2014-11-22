@@ -153,19 +153,26 @@
 ;       Figure out how to refactor this to make this pure and do sound
 ;         output elsewhere.
 ;       Figure out how to give extra points for grazing bullets.
-(defn check-player-shot [{{bullet-locations :locations} :invader-bullets
-                          {w :w h :h} :board
+(defn check-player-shot [{{w         :w
+                           h         :h
+                           music     :music}     :board
+                          {locations :locations} :invader-bullets
+                          {mystery-sound :sound} :mystery-ship
                            player :player :as state}]
-  (let [sound (player :sound)]
-    (if (entity-shot? player bullet-locations within-player-hitbox?)
+  (let [death-sound (player :sound)]
+    (if (entity-shot? player locations within-player-hitbox?)
       (do
-        (doto sound .rewind .play)
+        (doto music .mute .play)
+        (doto mystery-sound .mute .play)
+        (doto death-sound .rewind .play)
         (Thread/sleep 5000)
+        (doto music .unmute .rewind .play)
         (-> state
           (assoc-in  [:player :x] (* 0.5 w))
           (assoc-in  [:player :y] (* 0.9 h))
           (assoc-in  [:invader-bullets :locations] [])
           (assoc-in  [:player-bullets :locations] [])
+          (assoc-in  [:mystery-ship :location] nil)
           (update-in [:lives :value] dec)))
       state)))
 
