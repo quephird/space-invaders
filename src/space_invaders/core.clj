@@ -71,12 +71,14 @@
    :boss-ship       {:location    {:x 400 :y 400}
                      :direction-x 1
                      :direction-y 1
+                     :hits-left   25
+                     :sound       (.loadFile m "resources/boom.wav")
                      :sprites     [(q/load-image "resources/boss1.png")
-                                   (q/load-image "resources/boss2.png")]
-                     :sound       {:boom    (.loadFile m "resources/boom.wav")}}
+                                   (q/load-image "resources/boss2.png")]}
    :score           {:value       0
                      :sprites     (load-digit-sprites)}
-   :level           {:value       1}
+   :level           {:value       1
+                     :sprites     (load-digit-sprites)}
    :lives           {:value       3
                      :sprite      (q/load-image "resources/playersm.png")}
    :letters         {:sprites     (load-letter-sprites)}})
@@ -127,6 +129,14 @@
     (and (< (Math/abs (- bullet-x invader-x)) range-x)
          (< (Math/abs (- bullet-y invader-y)) range-y))))
 
+(defn within-boss-hitbox? [{boss-x   :x boss-y :y}
+                           {bullet-x :x bullet-y :y}]
+  "Returns true if the bullet is within the hitbox of the invader"
+  (let [range-x 150
+        range-y 100]
+    (and (< (Math/abs (- bullet-x boss-x)) range-x)
+         (< (Math/abs (- bullet-y boss-y)) range-y))))
+
 (defn entity-shot? [entity bullet-locations hitbox-fn]
   "Returns true if any of bullets are is within the entity's hitbox"
   (->> bullet-locations
@@ -158,6 +168,22 @@
       (assoc-in [:patrol :invaders] invaders-left-over)
       (update-in [:score :value] (fn [score] (+ score points-scored))))))
 
+(defn check-boss-shot [{{boss-location :location
+                         hits-left     :hits-left
+                         sound         :sound}    :boss-ship
+                        {locations :locations}  :player-bullets
+                         score                  :score :as state}]
+  "Returns a new version of game state removing all player bullets"
+  (let [bullets-missed      (remove (fn [bullet] (entity-shot? boss-location locations within-boss-hitbox?)) locations)
+        bullets-hit         (filter (fn [bullet] (entity-shot? boss-location locations within-boss-hitbox?)) locations)
+        points-scored         (* (count bullets-hit) 100)]
+    (doseq [_ bullets-hit]
+      (doto sound .rewind .play))
+    (-> state
+      (assoc-in [:player-bullets :locations] bullets-missed)
+      (assoc-in [:boss-ship :hits-left] (- hits-left (count bullets-hit)))
+      (update-in [:score :value] (fn [score] (+ score points-scored))))))
+
 ; TODO: Figure out how to destructure player and sound simulaneously.
 ;       Figure out how to refactor this to make this pure and do sound
 ;         output elsewhere.
@@ -171,11 +197,11 @@
   (let [death-sound (player :sound)]
     (if (entity-shot? player locations within-player-hitbox?)
       (do
-        (doto music .mute .play)
+;        (doto music .mute .play)
         (doto mystery-sound .mute .play)
         (doto death-sound .rewind .play)
         (Thread/sleep 5000)
-        (doto music .unmute .rewind .play)
+;        (doto music .unmute .rewind .play)
         (-> state
           (assoc-in  [:player :x] (* 0.5 w))
           (assoc-in  [:player :y] (* 0.9 h))
@@ -201,6 +227,17 @@
   (if (zero? (count invaders))
     (-> state
       (update-in [:level :value] inc)
+      (assoc-in [:patrol :invaders] (make-invaders))
+      (assoc-in [:patrol :direction] 1)
+      (assoc-in [:patrol :dx] 1))
+    state))
+
+(defn check-boss-dead [{{hits-left :hits-left} :boss-ship :as state}]
+  (if (zero? hits-left)
+    (-> state
+      (update-in [:level :value] inc)
+      (assoc-in [:boss-ship :location] {:x 400 :y 400})
+      (assoc-in [:boss-ship :hits-left] 25)
       (assoc-in [:patrol :invaders] (make-invaders))
       (assoc-in [:patrol :direction] 1)
       (assoc-in [:patrol :dx] 1))
@@ -364,6 +401,8 @@
     (boss-level? state)
       (-> state
         check-player-shot
+        check-boss-dead
+        check-boss-shot
         move-boss-ship
         move-invader-bullets
         move-player-bullets
@@ -490,6 +529,19 @@
       (q/translate (- sprite-width) 0))
     (q/pop-matrix)))
 
+(defn draw-level [{{value   :value
+                    sprites :sprites} :level
+                   {w       :w
+                    h       :h}     :board}]
+  "Renders the current level to the screen"
+  (let [sprite-width 32]
+    (q/push-matrix)
+    (q/translate (- w sprite-width) (- h sprite-width))
+    (doseq [digit (str value)]
+      (q/image (sprites digit) 0 0)
+      (q/translate (- sprite-width) 0))
+    (q/pop-matrix)))
+
 ; TODO: Possibly play some thing amusing like a sad trombone clip. (BUT ONLY ONCE!)
 (defn draw-game-over [{{music   :music
                         h       :h} :board
@@ -517,7 +569,7 @@
 
 (defn draw-regular-level [{player-bullets  :player-bullets
                            invader-bullets :invader-bullets :as state}]
-  (play-background-music state)
+;  (play-background-music state)
   (draw-stars state)
   (draw-player state)
   (draw-bullets player-bullets)
@@ -525,7 +577,9 @@
   (draw-patrol state)
   (draw-mystery-ship state)
   (draw-score state)
-  (draw-lives state))
+  (draw-lives state)
+  (draw-level state)
+  )
 
 (defn draw-boss-level [{player-bullets  :player-bullets
                         invader-bullets :invader-bullets :as state}]
@@ -536,6 +590,7 @@
   (draw-bullets invader-bullets)
   (draw-score state)
   (draw-lives state)
+  (draw-level state)
   )
 
 ; TODO: Need start screen with directions.
