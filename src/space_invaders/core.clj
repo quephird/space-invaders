@@ -44,36 +44,42 @@
 ;       Need provision for random big invader for extra points
 (defn create-board [w h m]
   "Returns a nested hashmap representing the entire state of the game"
-  {:board          {:w          w
-                    :h          h
-                    :music      (.loadFile m "resources/level.mp3")}
+  {:board          {:w            w
+                    :h            h
+                    :music        (.loadFile m "resources/level.mp3")}
    :stars           (make-stars w h)
-   :player         {:x          (* 0.5 w)
-                    :y          (* 0.9 h)
-                    :sprite     (q/load-image "resources/player.png")
-                    :sound      (.loadFile m "resources/explosion.wav")}
-   :player-bullets {:locations  []
-                    :sprite     (q/load-image "resources/pbullet.png")
-                    :sound      (.loadFile m "resources/pew.mp3")}
-   :patrol         {:invaders   (make-invaders)
-                    :direction  1
-                    :dx         1
-                    :sprites    [(q/load-image "resources/invader1.png")
-                                 (q/load-image "resources/invader2.png")]
-                    :sounds     {:boom    (.loadFile m "resources/boom.wav")
-                                 :landing (.loadFile m "resources/landing.wav")}}
-   :invader-bullets {:locations []
-                     :sprite    (q/load-image "resources/ibullet.png")
-                     :sound     (.loadFile m "resources/laser.wav")}
-   :mystery-ship    {:location  nil
-                     :sprites   (load-mystery-ship-sprites)
-                     :sound      (.loadFile m "resources/klaxon.mp3")}
-   :score           {:value     0
-                     :sprites   (load-digit-sprites)}
-   :level           {:value     0}
-   :lives           {:value     3
-                     :sprite    (q/load-image "resources/playersm.png")}
-   :letters         {:sprites   (load-letter-sprites)}})
+   :player         {:x            (* 0.5 w)
+                    :y            (* 0.9 h)
+                    :sprite       (q/load-image "resources/player.png")
+                    :sound        (.loadFile m "resources/explosion.wav")}
+   :player-bullets {:locations    []
+                    :sprite       (q/load-image "resources/pbullet.png")
+                    :sound        (.loadFile m "resources/pew.mp3")}
+   :patrol         {:invaders     (make-invaders)
+                    :direction    1
+                    :dx           1
+                    :sprites      [(q/load-image "resources/invader1.png")
+                                   (q/load-image "resources/invader2.png")]
+                    :sounds       {:boom    (.loadFile m "resources/boom.wav")
+                                   :landing (.loadFile m "resources/landing.wav")}}
+   :invader-bullets {:locations   []
+                     :sprite      (q/load-image "resources/ibullet.png")
+                     :sound       (.loadFile m "resources/laser.wav")}
+   :mystery-ship    {:location    nil
+                     :sprites     (load-mystery-ship-sprites)
+                     :sound       (.loadFile m "resources/klaxon.mp3")}
+   :boss-ship       {:location    {:x 400 :y 400}
+                     :direction-x 1
+                     :direction-y 1
+                     :sprites     [(q/load-image "resources/boss1.png")
+                                   (q/load-image "resources/boss2.png")]
+                     :sound       {:boom    (.loadFile m "resources/boom.wav")}}
+   :score           {:value       0
+                     :sprites     (load-digit-sprites)}
+   :level           {:value       1}
+   :lives           {:value       3
+                     :sprite      (q/load-image "resources/playersm.png")}
+   :letters         {:sprites     (load-letter-sprites)}})
 
 (defn reset-board [{{w :w h :h} :board :as state}]
   "Returns a new version of the board with all 'mutable' values
@@ -87,10 +93,14 @@
     (assoc-in [:invader-bullets :locations] [])
     (assoc-in [:player-bullets :locations] [])
     (assoc-in [:score :value] 0)
+    (assoc-in [:level :value] 1)
     (assoc-in [:lives :value] 3)))
 
 (defn game-over? [{{value :value} :lives :as state}]
   (zero? value))
+
+(defn boss-level? [{{value :value} :level :as state}]
+  (zero? (mod value 3)))
 
 (defn invaders-reached-bottom? [{{h        :h}        :board
                                  {invaders :invaders} :patrol :as state}]
@@ -131,7 +141,6 @@
     count
     (< 0)))
 
-; TODO: Figure out how to play sound when invader is shot.
 (defn check-invaders-shot [{{{sound    :boom}      :sounds
                              invaders  :invaders}  :patrol
                             {locations :locations} :player-bullets
@@ -209,7 +218,7 @@
       (assoc-in [:stars] (into [] (remove (fn [{y :y}] (< y 0)) stars)))
       (assoc-in [:stars] (concat stars new-star)))))
 
-; TODO: Maybe make bullet-dy a property that can decrease to\
+; TODO: Maybe make bullet-dy a property that can decrease to
 ;         increase dificulty.
 (defn move-player-bullets [state]
   "Returns a new version of game state by:
@@ -234,8 +243,8 @@
         (filter (fn [bullet] (< (bullet :y) h)))
         (map (fn [bullet] (update-in bullet [:y] (fn [y] (+ y 5)))))))))
 
-(defn change-direction? [{{w        :w}        :board
-                          {invaders :invaders} :patrol}]
+(defn change-patrol-direction? [{{w        :w}        :board
+                                 {invaders :invaders} :patrol}]
   (let [margin 75
         min-x  (apply min (map #(:x %) invaders))
         max-x  (apply max (map #(:x %) invaders))]
@@ -245,7 +254,7 @@
                      curr-dx        :dx
                      invaders       :invaders} :patrol :as state}]
   "Returns a new version of game state after moving the invader patrol"
-  (let [change-direction (change-direction? state)
+  (let [change-direction (change-patrol-direction? state)
         new-direction (if change-direction (- curr-direction) curr-direction)
         dy            (if change-direction 32 0)
         new-dx        (/ 12 (count invaders))]
@@ -270,6 +279,27 @@
    the inbound invader and patrol coordinates"
   (if (> (q/random 1) 0.998)
     {:x x :y y}))
+
+(defn move-boss-ship [{{w :w h :h} :board
+                       {{x :x y :y} :location
+                        direction-x :direction-x
+                        direction-y :direction-y} :boss-ship :as state}]
+  (let [margin-x 200
+        margin-y 200
+        new-direction-x (if (or (< (- x margin-x) 0) (> (+ x margin-x) w))
+                             (- direction-x)
+                             direction-x)
+        new-direction-y (if (or (< (- y margin-y) 0) (> (+ y margin-y 100) h))
+                             (- direction-y)
+                             direction-y)
+        new-x           (+ x (* 2 new-direction-x))
+        new-y           (+ y (* 2 new-direction-y))]
+    (-> state
+      (assoc-in [:boss-ship :location :x] new-x)
+      (assoc-in [:boss-ship :location :y] new-y)
+      (assoc-in [:boss-ship :direction-x] new-direction-x)
+      (assoc-in [:boss-ship :direction-y] new-direction-y))
+    ))
 
 (defn generate-invader-bullets [state]
   (let [{{invaders :invaders} :patrol
@@ -297,6 +327,16 @@
         (-> state
           (update-in [:invader-bullets :locations] (fn [bullets] (concat bullets new-bullets)))))))
 
+(defn generate-boss-bullets [{{{x :x y :y} :location} :boss-ship
+                               {sound :sound}         :invader-bullets :as state}]
+  (if (> (q/random 1) 0.1)
+    state
+    (let [bullet-x   (+ x -200 (q/random 255))
+          bullet-y   (+ y (q/random 50))
+          new-bullet {:x bullet-x :y bullet-y}]
+      (doto sound .rewind .play)
+      (update-in state [:invader-bullets :locations] (fn [bullets] (conj bullets new-bullet))))))
+
 ; TODO: This is a little icky but it works for now.
 (defn update-mystery-ship [{{w        :w}        :board
                             {location :location
@@ -318,23 +358,32 @@
 
 (defn update-board [state]
   "Primary hook which updates the entire game state before the next frame is drawn"
-  (if (game-over? state)
-    state
-    (-> state
-      (check-player-shot)
-      (check-invaders-reached-bottom)
-      (check-invaders-shot)
-      (check-invaders-cleared)
-      (move-stars)
-      (move-invader-bullets)
-      (move-player-bullets)
-      (move-patrol)
-      (move-mystery-ship)
-      (update-stars)
-      (generate-invader-bullets)
-      (generate-mystery-ship-bullets)
-      (update-mystery-ship)
-      )))
+  (cond
+    (game-over? state)
+      state
+    (boss-level? state)
+      (-> state
+        check-player-shot
+        move-boss-ship
+        move-invader-bullets
+        move-player-bullets
+        generate-boss-bullets)
+    :else
+      (-> state
+        check-player-shot
+        check-invaders-reached-bottom
+        check-invaders-shot
+        check-invaders-cleared
+        move-stars
+        move-invader-bullets
+        move-player-bullets
+        move-patrol
+        move-mystery-ship
+        update-stars
+        generate-invader-bullets
+        generate-mystery-ship-bullets
+        update-mystery-ship)
+        ))
 
 (defn move-player [{{x   :x} :player
                     {w   :w} :board  :as state}
@@ -413,6 +462,12 @@
           idx  (mod tick (count sprites))]
       (q/image (sprites idx) (:x location) (:y location)))))
 
+(defn draw-boss-ship [{{{x :x y :y} :location
+                        sprites     :sprites} :boss-ship}]
+  (let [tick (quot (q/frame-count) 30)
+        idx  (mod tick (count sprites))]
+    (q/image (sprites idx) x y)))
+
 (defn draw-score [{{value   :value
                     sprites :sprites} :score}]
   "Renders the current score to the screen"
@@ -460,25 +515,41 @@
     (q/stroke (q/random 255) 255 255)
     (q/point x y)))
 
-; TODO: Figure out how to implement background music.
-;       Need start screen with directions.
+(defn draw-regular-level [{player-bullets  :player-bullets
+                           invader-bullets :invader-bullets :as state}]
+  (play-background-music state)
+  (draw-stars state)
+  (draw-player state)
+  (draw-bullets player-bullets)
+  (draw-bullets invader-bullets)
+  (draw-patrol state)
+  (draw-mystery-ship state)
+  (draw-score state)
+  (draw-lives state))
+
+(defn draw-boss-level [{player-bullets  :player-bullets
+                        invader-bullets :invader-bullets :as state}]
+  (draw-stars state)
+  (draw-player state)
+  (draw-boss-ship state)
+  (draw-bullets player-bullets)
+  (draw-bullets invader-bullets)
+  (draw-score state)
+  (draw-lives state)
+  )
+
+; TODO: Need start screen with directions.
 ;       Need to implement levels
 ;       Need to implement boss level
-(defn draw-board [{player-bullets  :player-bullets
-                   invader-bullets :invader-bullets :as state}]
+(defn draw-board [state]
   "Primary hook to render all entities to the screen"
-  (if (game-over? state)
-    (draw-game-over state)
-    (do
-      (play-background-music state)
-      (draw-stars state)
-      (draw-player state)
-      (draw-bullets player-bullets)
-      (draw-bullets invader-bullets)
-      (draw-patrol state)
-      (draw-mystery-ship state)
-      (draw-score state)
-      (draw-lives state))))
+  (cond
+    (game-over? state)
+      (draw-game-over state)
+    (boss-level? state)
+      (draw-boss-level state)
+    :else
+      (draw-regular-level state)))
 
 (defn setup []
   "Primary hook to configure parts of the environment
