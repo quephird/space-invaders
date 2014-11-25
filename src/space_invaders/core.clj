@@ -77,7 +77,7 @@
                      :sprite      (q/load-image "resources/playersm.png")}
    :letters         {:sprites     (load-letter-sprites)}
    :sounds          {:new-player-bullet   (.loadFile m "resources/pew.mp3")
-                     :new-invader-bullet  (.loadFile m "resources/laser.wav")
+                     :new-invader-bullet  (.loadFile m "resources/ilaser.wav")
                      :new-mystery-ship    (.loadFile m "resources/klaxon.mp3")
                      :new-mystery-bullet  (.loadFile m "resources/mlaser.wav")
                      :new-boss-bullet     (.loadFile m "resources/blaser.wav")
