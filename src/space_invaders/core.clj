@@ -50,24 +50,18 @@
    :stars           (make-stars w h)
    :player         {:x            (* 0.5 w)
                     :y            (* 0.9 h)
-                    :sprite       (q/load-image "resources/player.png")
-                    :sound        (.loadFile m "resources/explosion.wav")}
+                    :sprite       (q/load-image "resources/player.png")}
    :player-bullets {:locations    []
-                    :sprite       (q/load-image "resources/pbullet.png")
-                    :sound        (.loadFile m "resources/pew.mp3")}
+                    :sprite       (q/load-image "resources/pbullet.png")}
    :patrol         {:invaders     (make-invaders)
                     :direction    1
                     :dx           1
                     :sprites      [(q/load-image "resources/invader1.png")
-                                   (q/load-image "resources/invader2.png")]
-                    :sounds       {:boom    (.loadFile m "resources/boom.wav")
-                                   :landing (.loadFile m "resources/landing.wav")}}
+                                   (q/load-image "resources/invader2.png")]}
    :invader-bullets {:locations   []
-                     :sprite      (q/load-image "resources/ibullet.png")
-                     :sound       (.loadFile m "resources/laser.wav")}
+                     :sprite      (q/load-image "resources/ibullet.png")}
    :mystery-ship    {:location    nil
-                     :sprites     (load-mystery-ship-sprites)
-                     :sound       (.loadFile m "resources/klaxon.mp3")}
+                     :sprites     (load-mystery-ship-sprites)}
    :boss-ship       {:location    {:x 400 :y 400}
                      :direction-x 1
                      :direction-y 1
@@ -81,12 +75,22 @@
                      :sprites     (load-digit-sprites)}
    :lives           {:value       3
                      :sprite      (q/load-image "resources/playersm.png")}
-   :letters         {:sprites     (load-letter-sprites)}})
+   :letters         {:sprites     (load-letter-sprites)}
+   :sounds          {:new-player-bullet   (.loadFile m "resources/pew.mp3")
+                     :new-invader-bullet  (.loadFile m "resources/laser.wav")
+                     :new-mystery-ship    (.loadFile m "resources/klaxon.mp3")
+                     :new-mystery-bullet  (.loadFile m "resources/mlaser.wav")
+                     :new-boss-bullet     (.loadFile m "resources/blaser.wav")
+                     :invader-dead        (.loadFile m "resources/boom.wav")
+                     :invader-landed      (.loadFile m "resources/landing.wav")
+                     :player-dead         (.loadFile m "resources/explosion.wav")}
+   :events           []})
 
 (defn reset-board [{{w :w h :h} :board :as state}]
   "Returns a new version of the board with all 'mutable' values
    in their orignal state."
   (-> state
+    (assoc-in [:events] [])
     (assoc-in [:player :x] (* 0.5 w))
     (assoc-in [:player :y] (* 0.9 h))
     (assoc-in [:patrol :invaders] (make-invaders))
@@ -101,8 +105,13 @@
 (defn game-over? [{{value :value} :lives :as state}]
   (zero? value))
 
+(defn regular-level? [{{value :value} :level :as state}]
+  (and (not (zero? (mod value 3)))
+       (not (game-over? state))))
+
 (defn boss-level? [{{value :value} :level :as state}]
-  (zero? (mod value 3)))
+  (and (zero? (mod value 3))
+       (not (game-over? state))))
 
 (defn invaders-reached-bottom? [{{h        :h}        :board
                                  {invaders :invaders} :patrol :as state}]
@@ -110,6 +119,9 @@
 
 (defn no-player-bullets? [{{locations :locations} :player-bullets}]
   (zero? (count locations)))
+
+(defn clear-previous-events [state]
+  (assoc-in state [:events] []))
 
 (defn within-player-hitbox? [{player-x :x player-y :y}
                              {bullet-x :x bullet-y :y}]
@@ -151,8 +163,7 @@
     count
     (< 0)))
 
-(defn check-invaders-shot [{{{sound    :boom}      :sounds
-                             invaders  :invaders}  :patrol
+(defn check-invaders-shot [{{invaders  :invaders}  :patrol
                             {locations :locations} :player-bullets
                              score                 :score :as state}]
   "Returns a new version of game state removing all bullets
@@ -161,11 +172,10 @@
         invaders-shot         (filter (fn [invader] (entity-shot? invader locations within-invader-hitbox?)) invaders)
         invaders-left-over    (remove (set invaders-shot) invaders)
         points-scored         (* (count invaders-shot) 100)]
-    (doseq [_ invaders-shot]
-      (doto sound .rewind .play))
     (-> state
       (assoc-in [:player-bullets :locations] bullets-left-over)
       (assoc-in [:patrol :invaders] invaders-left-over)
+      (update-in [:events] concat (repeat (count invaders-shot) :invader-dead))
       (update-in [:score :value] (fn [score] (+ score points-scored))))))
 
 (defn check-boss-shot [{{boss-location :location
@@ -173,7 +183,7 @@
                          sound         :sound}    :boss-ship
                         {locations :locations}  :player-bullets
                          score                  :score :as state}]
-  "Returns a new version of game state removing all player bullets"
+  "Returns a new version of game state removing all hitting player bullets"
   (let [bullets-missed      (remove (fn [bullet] (entity-shot? boss-location locations within-boss-hitbox?)) locations)
         bullets-hit         (filter (fn [bullet] (entity-shot? boss-location locations within-boss-hitbox?)) locations)
         points-scored         (* (count bullets-hit) 100)]
@@ -184,41 +194,26 @@
       (assoc-in [:boss-ship :hits-left] (- hits-left (count bullets-hit)))
       (update-in [:score :value] (fn [score] (+ score points-scored))))))
 
-; TODO: Figure out how to destructure player and sound simulaneously.
-;       Figure out how to refactor this to make this pure and do sound
-;         output elsewhere.
-;       Figure out how to give extra points for grazing bullets.
-(defn check-player-shot [{{w         :w
-                           h         :h
-                           music     :music}     :board
+; TODO: Figure out how to give extra points for grazing bullets.
+(defn check-player-shot [{{w :w      h :h}       :board
                           {locations :locations} :invader-bullets
-                          {mystery-sound :sound} :mystery-ship
-                           player :player :as state}]
-  (let [death-sound (player :sound)]
+                           player                :player :as state}]
     (if (entity-shot? player locations within-player-hitbox?)
-      (do
-;        (doto music .mute .play)
-        (doto mystery-sound .mute .play)
-        (doto death-sound .rewind .play)
-        (Thread/sleep 5000)
-;        (doto music .unmute .rewind .play)
-        (-> state
-          (assoc-in  [:player :x] (* 0.5 w))
-          (assoc-in  [:player :y] (* 0.9 h))
-          (assoc-in  [:invader-bullets :locations] [])
-          (assoc-in  [:player-bullets :locations] [])
-          (assoc-in  [:mystery-ship :location] nil)
-          (update-in [:lives :value] dec)))
-      state)))
+      (-> state
+        (assoc-in  [:player :x] (* 0.5 w))
+        (assoc-in  [:player :y] (* 0.9 h))
+        (assoc-in  [:invader-bullets :locations] [])
+        (assoc-in  [:player-bullets :locations] [])
+        (assoc-in  [:mystery-ship :location] nil)
+        (update-in [:events] conj :player-dead)
+        (update-in [:lives :value] dec))
+      state))
 
-(defn check-invaders-reached-bottom [{{h        :h}        :board
-                                      {{sound :landing}    :sounds
-                                       invaders :invaders} :patrol :as state}]
+(defn check-invaders-reached-bottom [state]
   (if (invaders-reached-bottom? state)
-    (do
-      (doto sound .rewind .play)
-      (Thread/sleep 5000)
-      (assoc-in state [:lives :value] 0))
+      (-> state
+        (update-in [:events] conj :invader-landed)
+        (assoc-in [:lives :value] 0))
     state))
 
 (defn check-invaders-cleared [{{invaders :invaders} :patrol :as state}]
@@ -255,8 +250,7 @@
       (assoc-in [:stars] (into [] (remove (fn [{y :y}] (< y 0)) stars)))
       (assoc-in [:stars] (concat stars new-star)))))
 
-; TODO: Maybe make bullet-dy a property that can decrease to
-;         increase dificulty.
+; TODO: Maybe make bullet-dy a property that can decrease to increase dificulty.
 (defn move-player-bullets [state]
   "Returns a new version of game state by:
 
@@ -338,16 +332,13 @@
       (assoc-in [:boss-ship :direction-y] new-direction-y))
     ))
 
-(defn generate-invader-bullets [state]
-  (let [{{invaders :invaders} :patrol
-         {sound :sound}       :invader-bullets} state
-        new-bullets (->> invaders
+(defn generate-invader-bullets [{{invaders :invaders} :patrol :as state}]
+  (let [new-bullets (->> invaders
                       (map (fn [invader] (make-invader-bullet invader)))
                       (filter #(not (nil? %)))
                       (into []))]
-    (dotimes [_ (count new-bullets)]
-      (doto sound .rewind .play))
     (-> state
+      (update-in [:events] concat (repeat (count new-bullets) :new-invader-bullet))
       (update-in [:invader-bullets :locations] (fn [bullets] (concat bullets new-bullets))))))
 
 (defn generate-mystery-ship-bullets [{{location :location} :mystery-ship
@@ -359,56 +350,42 @@
       state
     :else
       (let [new-bullets (into [] (map (fn [n] (update-in location [:x] (fn [x] (+ x n)))) [-30 0 30]))]
-        (dotimes [_ (count new-bullets)]
-          (doto sound .rewind .play))
         (-> state
-          (update-in [:invader-bullets :locations] (fn [bullets] (concat bullets new-bullets)))))))
+          (update-in [:invader-bullets :locations] concat new-bullets)
+          (update-in [:events] conj :new-mystery-bullet)))))
 
-(defn generate-boss-bullets [{{{x :x y :y} :location} :boss-ship
-                               {sound :sound}         :invader-bullets :as state}]
+(defn generate-boss-bullets [{{{x :x y :y} :location} :boss-ship :as state}]
   (if (> (q/random 1) 0.1)
     state
     (let [bullet-x   (+ x -200 (q/random 255))
           bullet-y   (+ y (q/random 50))
           new-bullet {:x bullet-x :y bullet-y}]
-      (doto sound .rewind .play)
-      (update-in state [:invader-bullets :locations] (fn [bullets] (conj bullets new-bullet))))))
+      (-> state
+        (update-in [:invader-bullets :locations] conj new-bullet)
+        (update-in [:events] conj :new-boss-bullet)))))
 
-; TODO: This is a little icky but it works for now.
 (defn update-mystery-ship [{{w        :w}        :board
-                            {location :location
-                             sound    :sound}    :mystery-ship :as state}]
+                            {location :location} :mystery-ship :as state}]
+  "Returns a new version of the state with either a new mystery ship
+   or it's being removed from the board."
   (cond
-    (nil? location)
-      (if (zero? (mod (q/frame-count) 1000))
-        (do
-          (doto sound .rewind .unmute .loop)
-          (assoc-in state [:mystery-ship :location] {:x -128 :y 75})
-          )
-        state)
+    (and (nil? location) (zero? (mod (q/frame-count) 1000)))
+      (-> state
+        (assoc-in [:mystery-ship :location] {:x -128 :y 75})
+        (update-in [:events] conj :new-mystery-ship))
+    (> (:x location 0) (+ w 128))
+      (-> state
+        (assoc-in [:mystery-ship :location] nil)
+        (update-in [:events] conj :mystery-ship-gone))
     :else
-      (if (> (:x location) (+ w 128))
-        (do
-          (doto sound .mute .play)
-          (assoc-in state [:mystery-ship :location] nil))
-         state)))
+      state))
 
 (defn update-board [state]
   "Primary hook which updates the entire game state before the next frame is drawn"
   (cond
-    (game-over? state)
-      state
-    (boss-level? state)
+    (regular-level? state)
       (-> state
-        check-player-shot
-        check-boss-dead
-        check-boss-shot
-        move-boss-ship
-        move-invader-bullets
-        move-player-bullets
-        generate-boss-bullets)
-    :else
-      (-> state
+        clear-previous-events
         check-player-shot
         check-invaders-reached-bottom
         check-invaders-shot
@@ -421,8 +398,20 @@
         update-stars
         generate-invader-bullets
         generate-mystery-ship-bullets
-        update-mystery-ship)
-        ))
+        update-mystery-ship
+        )
+    (boss-level? state)
+      (-> state
+        clear-previous-events
+        check-player-shot
+        check-boss-dead
+        check-boss-shot
+        move-boss-ship
+        move-invader-bullets
+        move-player-bullets
+        generate-boss-bullets)
+    :else
+      (clear-previous-events state)))
 
 (defn move-player [{{x   :x} :player
                     {w   :w} :board  :as state}
@@ -436,15 +425,17 @@
               :else 0)]
     (update-in state [:player :x] (fn [x] (+ x dx)))))
 
-(defn add-player-bullet [{{x :x y :y} :player :as state}]
+; TODO: Figure out how to move sound clip playing out into main draw routine.
+(defn add-player-bullet [{{x :x y :y} :player
+                          sounds      :sounds :as state}]
   (let [pixels-above-player 48
         new-bullet {:x x :y (- y pixels-above-player)}]
-    (update-in state [:player-bullets :locations] conj new-bullet)))
+    (doto (:new-player-bullet sounds) .rewind .play)
+    (-> state
+      (update-in [:player-bullets :locations] conj new-bullet))))
 
 ; TODO: Figure out why player stops moving after hitting the space key
 ;         with left or right key still depressed.
-;       Figure out how to move sound clip playing out into main draw routine.
-;       Figure out how to limit to one live bullet at a time.
 (defn key-pressed [{{sound :sound} :player-bullets :as state}
                     {key           :key
                      key-code      :key-code       :as event}]
@@ -456,9 +447,7 @@
     (and (= :s key) (game-over? state))
       (reset-board state)
     (and (= 32 key-code) (no-player-bullets? state))
-      (do
-        (doto sound .rewind .play)
-        (add-player-bullet state))
+      (add-player-bullet state)
     (contains? #{:left :right} key)
       (move-player state event)
     :else
@@ -556,9 +545,6 @@
       (q/translate letter-width 0))
     (q/pop-matrix)))
 
-; TODO: Initalize board with set number of stars;
-;         in update routine, move stars upward, randomly select whether or not to add
-;         star to bottom, draw them here.
 (defn draw-stars [{{w :w h :h} :board
                    stars       :stars}]
   (q/background 0)
@@ -566,6 +552,38 @@
   (doseq [{x :x y :y} stars]
     (q/stroke (q/random 255) 255 255)
     (q/point x y)))
+
+(defn handle-sounds [{sounds :sounds
+                      events :events :as state}]
+  (doseq [event events]
+    (cond
+      (= event :new-invader-bullet)
+        (doto (event sounds) .rewind .play)
+      (= event :new-mystery-bullet)
+        (doto (event sounds) .rewind .play)
+      (= event :new-boss-bullet)
+        (doto (event sounds) .rewind .play)
+      (= event :invader-dead)
+        (doto (event sounds) .rewind .play)
+      (= event :new-mystery-ship)
+        (doto (event sounds) .rewind .unmute .loop)
+      (= event :mystery-ship-gone)
+        (doto (:new-mystery-ship sounds) .mute .play)
+      (= event :invader-landed)
+        (do
+          (doto (event sounds) .rewind .play)
+          (Thread/sleep 5000))
+      (= event :player-dead)
+        (do
+;        (doto music .mute .play)
+;        (doto mystery-sound .mute .play)
+;        (doto death-sound .rewind .play)
+;        (Thread/sleep 5000)
+;        (doto music .unmute .rewind .play)
+          (doto (event sounds) .rewind .play)
+          (Thread/sleep 5000))
+      :else
+        nil)))
 
 (defn draw-regular-level [{player-bullets  :player-bullets
                            invader-bullets :invader-bullets :as state}]
@@ -598,13 +616,14 @@
 ;       Need to implement boss level
 (defn draw-board [state]
   "Primary hook to render all entities to the screen"
+  (handle-sounds state)
   (cond
-    (game-over? state)
-      (draw-game-over state)
+    (regular-level? state)
+      (draw-regular-level state)
     (boss-level? state)
       (draw-boss-level state)
     :else
-      (draw-regular-level state)))
+      (draw-game-over state)))
 
 (defn setup []
   "Primary hook to configure parts of the environment
@@ -617,22 +636,21 @@
     (q/image-mode :center)
     (create-board w h m)))
 
-(defn on-close [{{music :music} :board
-                 {sound :sound} :mystery-ship :as state}]
+(defn stop-all-sounds [{{music :music} :board
+                        {sound :sound} :mystery-ship :as state}]
   "Primary hook when sketch is closed to insure that sounds are stopped
    without shutting down the entire JVM."
   (doto music .mute .play)
-  (doto sound .mute .play)
-  state)
+  (doto sound .mute .play))
 
 ; TODO: Figure out how to configure this project such that
 ;         lein uberjar produces an executable jar.
 (q/defsketch space-invaders
   :title       "space invaders"
+  :size        [800 800]
   :setup       setup
   :draw        draw-board
-  :size        [800 800]
-  :update      update-board
   :key-pressed key-pressed
-  :on-close    on-close
+  :update      update-board
+  :on-close    stop-all-sounds
   :middleware  [m/fun-mode])
