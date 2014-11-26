@@ -556,34 +556,31 @@
 (defn handle-sounds [{sounds :sounds
                       events :events :as state}]
   (doseq [event events]
-    (cond
-      (= event :new-invader-bullet)
+    (case event
+      :new-invader-bullet
         (doto (event sounds) .rewind .play)
-      (= event :new-mystery-bullet)
+      :new-mystery-bullet
         (doto (event sounds) .rewind .play)
-      (= event :new-boss-bullet)
+      :new-boss-bullet
         (doto (event sounds) .rewind .play)
-      (= event :invader-dead)
+      :invader-dead
         (doto (event sounds) .rewind .play)
-      (= event :new-mystery-ship)
+      :new-mystery-ship
         (doto (event sounds) .rewind .unmute .loop)
-      (= event :mystery-ship-gone)
+      :mystery-ship-gone
         (doto (:new-mystery-ship sounds) .mute .play)
-      (= event :invader-landed)
+      :invader-landed
         (do
           (doto (event sounds) .rewind .play)
           (Thread/sleep 5000))
-      (= event :player-dead)
+      :player-dead
         (do
 ;        (doto music .mute .play)
-;        (doto mystery-sound .mute .play)
-;        (doto death-sound .rewind .play)
-;        (Thread/sleep 5000)
-;        (doto music .unmute .rewind .play)
+          (doto (:new-mystery-ship sounds) .mute .play)
           (doto (event sounds) .rewind .play)
+;        (doto music .unmute .rewind .play)
           (Thread/sleep 5000))
-      :else
-        nil)))
+      nil)))
 
 (defn draw-regular-level [{player-bullets  :player-bullets
                            invader-bullets :invader-bullets :as state}]
@@ -637,11 +634,11 @@
     (create-board w h m)))
 
 (defn stop-all-sounds [{{music :music} :board
-                        {sound :sound} :mystery-ship :as state}]
-  "Primary hook when sketch is closed to insure that sounds are stopped
-   without shutting down the entire JVM."
+                        sounds :sounds :as state}]
+  "Primary hook when sketch is closed to insure that all looping
+   sounds are stopped without shutting down the entire JVM."
   (doto music .mute .play)
-  (doto sound .mute .play))
+  (doto (:new-mystery-ship sounds) .mute .play))
 
 ; TODO: Figure out how to configure this project such that
 ;         lein uberjar produces an executable jar.
