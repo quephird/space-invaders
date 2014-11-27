@@ -66,7 +66,7 @@
                      :direction-x 1
                      :direction-y 1
                      :hits-left   25
-                     :sound       (.loadFile m "resources/boom.wav")
+                     :sound       (.loadFile m "resources/mboom.wav")
                      :sprites     [(q/load-image "resources/boss1.png")
                                    (q/load-image "resources/boss2.png")]}
    :score           {:value       0
@@ -81,9 +81,10 @@
                      :new-mystery-ship    (.loadFile m "resources/klaxon.mp3")
                      :new-mystery-bullet  (.loadFile m "resources/mlaser.wav")
                      :new-boss-bullet     (.loadFile m "resources/blaser.wav")
-                     :invader-dead        (.loadFile m "resources/boom.wav")
+                     :mystery-ship-dead   (.loadFile m "resources/mboom.wav")
+                     :invader-dead        (.loadFile m "resources/iboom.aiff")
                      :invader-landed      (.loadFile m "resources/landing.wav")
-                     :player-dead         (.loadFile m "resources/explosion.wav")}
+                     :player-dead         (.loadFile m "resources/pboom.wav")}
    :events           []})
 
 (defn reset-board [{{w :w h :h} :board :as state}]
@@ -141,6 +142,14 @@
     (and (< (Math/abs (- bullet-x invader-x)) range-x)
          (< (Math/abs (- bullet-y invader-y)) range-y))))
 
+(defn within-mystery-hitbox? [{mystery-x :x mystery-y :y}
+                              {bullet-x :x  bullet-y :y}]
+  "Returns true if the bullet is within the hitbox of the mystery ship"
+  (let [range-x 60
+        range-y 25]
+    (and (< (Math/abs (- bullet-x mystery-x)) range-x)
+         (< (Math/abs (- bullet-y mystery-y)) range-y))))
+
 (defn within-boss-hitbox? [{boss-x   :x boss-y :y}
                            {bullet-x :x bullet-y :y}]
   "Returns true if the bullet is within the hitbox of the invader"
@@ -177,6 +186,19 @@
       (assoc-in [:patrol :invaders] invaders-left-over)
       (update-in [:events] concat (repeat (count invaders-shot) :invader-dead))
       (update-in [:score :value] (fn [score] (+ score points-scored))))))
+
+(defn check-mystery-ship-shot [{{locations        :locations} :player-bullets
+                                {mystery-location :location}  :mystery-ship
+                                 score                        :score :as state}]
+  (if (nil? mystery-location)
+    state
+    (let [mystery-shot (entity-shot? mystery-location locations within-mystery-hitbox?)]
+      (if mystery-shot
+        (-> state
+          (update-in [:score :value] + 500)
+          (assoc-in [:mystery-ship :location] nil)
+          (update-in [:events] conj :mystery-ship-dead))
+         state))))
 
 (defn check-boss-shot [{{boss-location :location
                          hits-left     :hits-left
@@ -364,6 +386,7 @@
         (update-in [:invader-bullets :locations] conj new-bullet)
         (update-in [:events] conj :new-boss-bullet)))))
 
+; TODO: Change strategy for determining when to bring out the mystery ship.
 (defn update-mystery-ship [{{w        :w}        :board
                             {location :location} :mystery-ship :as state}]
   "Returns a new version of the state with either a new mystery ship
@@ -390,6 +413,7 @@
         check-invaders-reached-bottom
         check-invaders-shot
         check-invaders-cleared
+        check-mystery-ship-shot
         move-stars
         move-invader-bullets
         move-player-bullets
@@ -567,6 +591,10 @@
         (doto (event sounds) .rewind .play)
       :new-mystery-ship
         (doto (event sounds) .rewind .unmute .loop)
+      :mystery-ship-dead
+        (do
+          (doto (:new-mystery-ship sounds) .mute .play)
+          (doto (event sounds) .rewind .play))
       :mystery-ship-gone
         (doto (:new-mystery-ship sounds) .mute .play)
       :invader-landed
