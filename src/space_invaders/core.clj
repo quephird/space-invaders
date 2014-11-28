@@ -6,7 +6,7 @@
 (defn make-stars [w h]
   "Returns a vector of hashmaps each representing a background star"
   (into []
-    (for [i (range 100)]
+    (for [i (range 50)]
       {:x (q/random w)
        :y (q/random h)})))
 
@@ -40,17 +40,14 @@
 ;         of the bullets too.
 ;       Make probability of generating a bullet a property
 ;         that can be "mutated" to increase difficulty
-;       Consider reorganizing sprites.
-;       Need provision for random big invader for extra points
+;       Need to move sprites into separate nested hashmap.
 (defn create-board [w h m]
   "Returns a nested hashmap representing the entire state of the game"
   {:board          {:w            w
-                    :h            h
-                    :music        (.loadFile m "resources/level.mp3")}
+                    :h            h}
    :stars           (make-stars w h)
    :player         {:x            (* 0.5 w)
-                    :y            (* 0.9 h)
-                    :sprite       (q/load-image "resources/player.png")}
+                    :y            (* 0.9 h)}
    :player-bullets {:locations    []
                     :sprite       (q/load-image "resources/pbullet.png")}
    :patrol         {:invaders     (make-invaders)
@@ -66,7 +63,6 @@
                      :direction-x 1
                      :direction-y 1
                      :hits-left   25
-                     :sound       (.loadFile m "resources/mboom.wav")
                      :sprites     [(q/load-image "resources/boss1.png")
                                    (q/load-image "resources/boss2.png")]}
    :score           {:value       0
@@ -76,11 +72,13 @@
    :lives           {:value       3
                      :sprite      (q/load-image "resources/playersm.png")}
    :letters         {:sprites     (load-letter-sprites)}
-   :sounds          {:new-player-bullet   (.loadFile m "resources/pew.mp3")
+;   :loops           (.loadFile m "resources/regular.wav")
+   :sounds          {:new-player-bullet   (.loadFile m "resources/player-bullet.wav")
                      :new-invader-bullet  (.loadFile m "resources/ilaser.wav")
                      :new-mystery-ship    (.loadFile m "resources/klaxon.mp3")
                      :new-mystery-bullet  (.loadFile m "resources/mlaser.wav")
                      :new-boss-bullet     (.loadFile m "resources/blaser.wav")
+                     :boss-shot           (.loadFile m "resources/boss-shot.aiff")
                      :mystery-ship-dead   (.loadFile m "resources/mboom.wav")
                      :invader-dead        (.loadFile m "resources/iboom.aiff")
                      :invader-landed      (.loadFile m "resources/landing.wav")
@@ -201,20 +199,18 @@
          state))))
 
 (defn check-boss-shot [{{boss-location :location
-                         hits-left     :hits-left
-                         sound         :sound}    :boss-ship
-                        {locations :locations}  :player-bullets
-                         score                  :score :as state}]
+                         hits-left     :hits-left} :boss-ship
+                        {locations     :locations} :player-bullets
+                         score                     :score :as state}]
   "Returns a new version of game state removing all hitting player bullets"
   (let [bullets-missed      (remove (fn [bullet] (entity-shot? boss-location locations within-boss-hitbox?)) locations)
         bullets-hit         (filter (fn [bullet] (entity-shot? boss-location locations within-boss-hitbox?)) locations)
         points-scored         (* (count bullets-hit) 100)]
-    (doseq [_ bullets-hit]
-      (doto sound .rewind .play))
     (-> state
       (assoc-in [:player-bullets :locations] bullets-missed)
       (assoc-in [:boss-ship :hits-left] (- hits-left (count bullets-hit)))
-      (update-in [:score :value] (fn [score] (+ score points-scored))))))
+      (update-in [:score :value] (fn [score] (+ score points-scored)))
+      (update-in [:events] concat (repeat (count bullets-hit) :boss-shot)))))
 
 ; TODO: Figure out how to give extra points for grazing bullets.
 (defn check-player-shot [{{w :w      h :h}       :board
@@ -267,7 +263,7 @@
 
 (defn update-stars [{{w :w h :h} :board
                       stars      :stars :as state}]
-  (let [new-star (if (< (q/random 1) 0.25) [{:x (q/random w) :y h}])]
+  (let [new-star (if (< (q/random 1) 0.125) [{:x (q/random w) :y h}])]
     (-> state
       (assoc-in [:stars] (into [] (remove (fn [{y :y}] (< y 0)) stars)))
       (assoc-in [:stars] (concat stars new-star)))))
@@ -477,7 +473,7 @@
     :else
       state))
 
-(defn play-background-music [{{music :music} :board :as state}]
+(defn play-background-music [{music :loops :as state}]
   (if (not (.isLooping music))
     (doto music .unmute .rewind .loop))
   state)
@@ -486,7 +482,21 @@
                      y      :y
                      sprite :sprite} :player}]
   "Renders the player to the screen"
-  (q/image sprite x y))
+  (q/push-matrix)
+  (q/translate x y)
+  (q/stroke 150 100 255)
+  (q/stroke-weight 1)
+  (q/no-fill)
+  (q/begin-shape)
+  (doseq [[vx vy] [[0 -20]
+                   [20 32]
+                   [10 20]
+                   [-10 20]
+                   [-20 32]]]
+    (q/vertex vx vy))
+  (q/end-shape :close)
+  (q/pop-matrix))
+;  (q/image sprite x y))
 
 (defn draw-bullets [{bullets :locations sprite :sprite}]
   "Renders all player bullets to the screen"
@@ -563,7 +573,7 @@
     (q/background 0)
     (q/push-matrix)
     (q/translate (* 0.5 letter-width) (* 0.5 h))
-    (doto music .mute .play)
+;    (doto music .mute .play)
     (doseq [letter "GAMEOVER"]
       (q/image (sprites letter) 0 0)
       (q/translate letter-width 0))
@@ -572,12 +582,18 @@
 (defn draw-stars [{{w :w h :h} :board
                    stars       :stars}]
   (q/background 0)
-  (q/stroke-weight 4)
+  (q/stroke-weight 1)
   (doseq [{x :x y :y} stars]
+    (q/stroke-weight 1)
     (q/stroke (q/random 255) 255 255)
-    (q/point x y)))
+    (q/line (- x 6) (- y 6) (+ x 6) (+ y 6))
+    (q/line (- x 6) (+ y 6) (+ x 6) (- y 6))
+    (q/stroke-weight 4)
+    (q/point x y)
+    ))
 
 (defn handle-sounds [{sounds :sounds
+                      music  :loops
                       events :events :as state}]
   (doseq [event events]
     (case event
@@ -586,6 +602,8 @@
       :new-mystery-bullet
         (doto (event sounds) .rewind .play)
       :new-boss-bullet
+        (doto (event sounds) .rewind .play)
+      :boss-shot
         (doto (event sounds) .rewind .play)
       :invader-dead
         (doto (event sounds) .rewind .play)
@@ -603,10 +621,10 @@
           (Thread/sleep 5000))
       :player-dead
         (do
-;        (doto music .mute .play)
+;          (doto music .mute .play)
           (doto (:new-mystery-ship sounds) .mute .play)
           (doto (event sounds) .rewind .play)
-;        (doto music .unmute .rewind .play)
+;          (doto music .unmute .rewind .play)
           (Thread/sleep 5000))
       nil)))
 
@@ -661,11 +679,11 @@
     (q/image-mode :center)
     (create-board w h m)))
 
-(defn stop-all-sounds [{{music :music} :board
+(defn stop-all-sounds [{music  :loops
                         sounds :sounds :as state}]
   "Primary hook when sketch is closed to insure that all looping
    sounds are stopped without shutting down the entire JVM."
-  (doto music .mute .play)
+;  (doto music .mute .play)
   (doto (:new-mystery-ship sounds) .mute .play))
 
 ; TODO: Figure out how to configure this project such that
