@@ -52,7 +52,7 @@
    :patrol         {:invaders     (make-invaders)
                     :direction    1
                     :dx           1}
-   :invader-bullets {:locations   []}
+   :invader-bullets  []
    :mystery-ship     nil
    :boss-ship       {:location    {:x 400 :y 400}
                      :direction-x 1
@@ -97,7 +97,7 @@
     (assoc-in [:patrol :invaders] (make-invaders))
     (assoc-in [:patrol :direction] 1)
     (assoc-in [:patrol :dx] 1)
-    (assoc-in [:invader-bullets :locations] [])
+    (assoc-in [:invader-bullets] [])
     (assoc-in [:player-bullets] [])
     (assoc-in [:score] 0)
     (assoc-in [:level] 1)
@@ -224,14 +224,14 @@
       (update-in [:events] concat (repeat (count bullets-hit) :boss-shot)))))
 
 ; TODO: Figure out how to give extra points for grazing bullets.
-(defn check-player-shot [{{w :w      h :h}       :board
-                          {locations :locations} :invader-bullets
-                           player                :player :as state}]
-    (if (entity-shot? player locations within-player-hitbox?)
+(defn check-player-shot [{{w :w h :h}      :board
+                           invader-bullets :invader-bullets
+                           player          :player :as state}]
+    (if (entity-shot? player invader-bullets within-player-hitbox?)
       (-> state
         (assoc-in  [:player :x] (* 0.5 w))
         (assoc-in  [:player :y] (* 0.9 h))
-        (assoc-in  [:invader-bullets :locations] [])
+        (assoc-in  [:invader-bullets] [])
         (assoc-in  [:player-bullets] [])
         (assoc-in  [:mystery-ship] nil)
         (update-in [:events] conj :player-dead)
@@ -297,7 +297,7 @@
 
    * getting rid of invader bullets that pass off screen, and
    * moving remaining invader bullets downward"
-  (update-in state [:invader-bullets :locations]
+  (update-in state [:invader-bullets]
     (fn [bullets]
       (->> bullets
         (filter (fn [bullet] (< (bullet :y) h)))
@@ -368,10 +368,9 @@
                       (into []))]
     (-> state
       (update-in [:events] concat (repeat (count new-bullets) :new-invader-bullet))
-      (update-in [:invader-bullets :locations] (fn [bullets] (concat bullets new-bullets))))))
+      (update-in [:invader-bullets] concat new-bullets))))
 
-(defn generate-mystery-ship-bullets [{location       :mystery-ship
-                                      {sound :sound} :invader-bullets :as state}]
+(defn generate-mystery-ship-bullets [{location :mystery-ship :as state}]
   (cond
     (nil? location)
       state
@@ -380,7 +379,7 @@
     :else
       (let [new-bullets (into [] (map (fn [n] (update-in location [:x] (fn [x] (+ x n)))) [-30 0 30]))]
         (-> state
-          (update-in [:invader-bullets :locations] concat new-bullets)
+          (update-in [:invader-bullets] concat new-bullets)
           (update-in [:events] conj :new-mystery-bullet)))))
 
 (defn generate-boss-bullets [{{{x :x y :y} :location} :boss-ship :as state}]
@@ -390,7 +389,7 @@
           bullet-y   (+ y (q/random 50))
           new-bullet {:x bullet-x :y bullet-y}]
       (-> state
-        (update-in [:invader-bullets :locations] conj new-bullet)
+        (update-in [:invader-bullets] conj new-bullet)
         (update-in [:events] conj :new-boss-bullet)))))
 
 ; TODO: Change strategy for determining when to bring out the mystery ship.
@@ -515,10 +514,10 @@
   (doseq [{x :x y :y} player-bullets]
     (q/image sprite x y)))
 
-(defn draw-invader-bullets [{{locations :locations}      :invader-bullets
-                             {sprite    :invader-bullet} :sprites}]
+(defn draw-invader-bullets [{invader-bullets         :invader-bullets
+                            {sprite :invader-bullet} :sprites}]
   "Renders all player bullets to the screen"
-  (doseq [{x :x y :y} locations]
+  (doseq [{x :x y :y} invader-bullets]
     (q/image sprite x y)))
 
 ; TODO: Think about how to draw exploded invaders,
