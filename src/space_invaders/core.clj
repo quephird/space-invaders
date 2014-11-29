@@ -447,25 +447,17 @@
     :else
       (clear-previous-events state)))
 
-; TODO: Call this from the update loop with out key detection;
-;         make new function to set only direction in player object
-;         based on which arrow key was pressed.
 (defn move-player [{{x         :x
                      direction :direction} :player
                     {w         :w}         :board  :as state}]
-;                    {key :key        :as event}]
   "Returns a new version of the board state representing
    a change in position of the player"
   (let [margin 125
         dx (cond
-              (and (= direction -1) (> x margin)) -10
-              (and (= direction 1) (< x (- w margin))) 10
+              (and (= direction -1) (> x margin)) -5
+              (and (= direction 1) (< x (- w margin))) 5
               :else 0)]
     (update-in state [:player :x] (fn [x] (+ x dx)))))
-
-(defn update-player-direction [state
-                               {key :key :as event}]
-  (assoc-in state [:player :direction] (if (= key :left) -1 1)))
 
 ; TODO: Figure out how to move sound clip playing out into main draw routine.
 (defn add-player-bullet [{{x :x y :y} :player
@@ -490,9 +482,10 @@
       (reset-board state)
     (and (= 32 key-code) (no-player-bullets? state))
       (add-player-bullet state)
-    (contains? #{:left :right} key)
-      (update-player-direction state event)
-;      (move-player state event)
+    (= :left key)
+      (assoc-in state [:player :direction] -1)
+    (= :right key)
+      (assoc-in state [:player :direction] 1)
     :else
       state))
 
