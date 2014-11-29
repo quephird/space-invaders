@@ -48,7 +48,7 @@
    :player         {:x            (* 0.5 w)
                     :y            (* 0.9 h)
                     :direction    0}
-   :player-bullets {:locations    []}
+   :player-bullets  []
    :patrol         {:invaders     (make-invaders)
                     :direction    1
                     :dx           1}
@@ -98,7 +98,7 @@
     (assoc-in [:patrol :direction] 1)
     (assoc-in [:patrol :dx] 1)
     (assoc-in [:invader-bullets :locations] [])
-    (assoc-in [:player-bullets :locations] [])
+    (assoc-in [:player-bullets] [])
     (assoc-in [:score] 0)
     (assoc-in [:level] 1)
     (assoc-in [:lives] 3)))
@@ -118,8 +118,8 @@
                                  {invaders :invaders} :patrol :as state}]
   (->> invaders (map :y) (apply max) (< (- h 100))))
 
-(defn no-player-bullets? [{{locations :locations} :player-bullets}]
-  (zero? (count locations)))
+(defn no-player-bullets? [{player-bullets :player-bullets}]
+  (zero? (count player-bullets)))
 
 (defn clear-previous-events [state]
   (assoc-in state [:events] []))
@@ -183,27 +183,28 @@
     (< 0)))
 
 (defn check-invaders-shot [{{invaders  :invaders}  :patrol
-                            {locations :locations} :player-bullets :as state}]
+                             player-bullets :player-bullets :as state}]
   "Returns a new version of game state removing all bullets
    and invaders involved in collisions"
-  (let [bullets-left-over     (remove (fn [bullet] (any-invader-shot? bullet invaders)) locations)
-        invaders-shot         (filter (fn [invader] (entity-shot? invader locations within-invader-hitbox?)) invaders)
+  (let [bullets-left-over     (remove (fn [bullet] (any-invader-shot? bullet invaders)) player-bullets)
+        invaders-shot         (filter (fn [invader] (entity-shot? invader player-bullets within-invader-hitbox?)) invaders)
         invaders-left-over    (remove (set invaders-shot) invaders)
         points-scored         (* (count invaders-shot) 100)]
     (-> state
-      (assoc-in [:player-bullets :locations] bullets-left-over)
+      (assoc-in [:player-bullets] bullets-left-over)
       (assoc-in [:patrol :invaders] invaders-left-over)
       (update-in [:events] concat (repeat (count invaders-shot) :invader-dead))
       (update-in [:score] + points-scored))))
 
-(defn check-mystery-ship-shot [{{locations :locations} :player-bullets
-                                 mystery-location      :mystery-ship
-                                 score                 :score :as state}]
+(defn check-mystery-ship-shot [{player-bullets   :player-bullets
+                                mystery-location :mystery-ship
+                                score            :score :as state}]
   (if (nil? mystery-location)
     state
-    (let [mystery-shot (entity-shot? mystery-location locations within-mystery-hitbox?)]
+    (let [mystery-shot (entity-shot? mystery-location player-bullets within-mystery-hitbox?)]
       (if mystery-shot
         (-> state
+          (assoc-in [:player-bullets] [])
           (update-in [:score] + 500)
           (assoc-in [:mystery-ship] nil)
           (update-in [:events] conj :mystery-ship-dead))
@@ -211,13 +212,13 @@
 
 (defn check-boss-shot [{{boss-location :location
                          hits-left     :hits-left} :boss-ship
-                        {locations     :locations} :player-bullets :as state}]
+                         player-bullets            :player-bullets :as state}]
   "Returns a new version of game state removing all hitting player bullets"
-  (let [bullets-missed      (remove (fn [bullet] (entity-shot? boss-location locations within-boss-hitbox?)) locations)
-        bullets-hit         (filter (fn [bullet] (entity-shot? boss-location locations within-boss-hitbox?)) locations)
+  (let [bullets-missed      (remove (fn [bullet] (entity-shot? boss-location player-bullets within-boss-hitbox?)) player-bullets)
+        bullets-hit         (filter (fn [bullet] (entity-shot? boss-location player-bullets within-boss-hitbox?)) player-bullets)
         points-scored         (* (count bullets-hit) 100)]
     (-> state
-      (assoc-in [:player-bullets :locations] bullets-missed)
+      (assoc-in [:player-bullets] bullets-missed)
       (assoc-in [:boss-ship :hits-left] (- hits-left (count bullets-hit)))
       (update-in [:score] + points-scored)
       (update-in [:events] concat (repeat (count bullets-hit) :boss-shot)))))
@@ -231,7 +232,7 @@
         (assoc-in  [:player :x] (* 0.5 w))
         (assoc-in  [:player :y] (* 0.9 h))
         (assoc-in  [:invader-bullets :locations] [])
-        (assoc-in  [:player-bullets :locations] [])
+        (assoc-in  [:player-bullets] [])
         (assoc-in  [:mystery-ship] nil)
         (update-in [:events] conj :player-dead)
         (update-in [:lives] dec))
@@ -285,7 +286,7 @@
    * getting rid of player bullets that pass off screen, and
    * moving remaining player bullets upward"
   (let [bullet-dy 10]
-    (update-in state [:player-bullets :locations]
+    (update-in state [:player-bullets]
       (fn [bullets]
         (->> bullets
           (filter (fn [bullet] (> (bullet :y) 0)))
@@ -466,13 +467,13 @@
         new-bullet {:x x :y (- y pixels-above-player)}]
     (doto (:new-player-bullet sounds) .rewind .play)
     (-> state
-      (update-in [:player-bullets :locations] conj new-bullet))))
+      (update-in [:player-bullets] conj new-bullet))))
 
 ; TODO: Figure out why player stops moving after hitting the space key
 ;         with left or right key still depressed.
-(defn key-pressed [{{sound :sound} :player-bullets :as state}
-                    {key           :key
-                     key-code      :key-code       :as event}]
+(defn key-pressed [state
+                   {key      :key
+                    key-code :key-code :as event}]
   "Primary hook to return new version of game state taking into account:
 
     * moving the player left or right
@@ -508,10 +509,10 @@
   (q/image sprite 0 0)
   (q/pop-matrix))
 
-(defn draw-player-bullets [{{locations :locations}     :player-bullets
-                            {sprite    :player-bullet} :sprites}]
+(defn draw-player-bullets [{player-bullets         :player-bullets
+                           {sprite :player-bullet} :sprites}]
   "Renders all player bullets to the screen"
-  (doseq [{x :x y :y} locations]
+  (doseq [{x :x y :y} player-bullets]
     (q/image sprite x y)))
 
 (defn draw-invader-bullets [{{locations :locations}      :invader-bullets
