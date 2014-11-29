@@ -75,16 +75,16 @@
                      :mystery-ship (load-mystery-ship-sprites)
                      :boss-ship    [(q/load-image "resources/boss1.png")
                                     (q/load-image "resources/boss2.png")]}
-   :sounds          {:new-player-bullet   (.loadFile m "resources/player-bullet.wav")
-                     :new-invader-bullet  (.loadFile m "resources/ilaser.wav")
-                     :new-mystery-ship    (.loadFile m "resources/klaxon.mp3")
-                     :new-mystery-bullet  (.loadFile m "resources/mlaser.wav")
-                     :new-boss-bullet     (.loadFile m "resources/blaser.wav")
+   :sounds          {:new-player-bullet   (.loadFile m "resources/new-player-bullet.wav")
+                     :new-invader-bullet  (.loadFile m "resources/new-invader-bullet.wav")
+                     :new-mystery-ship    (.loadFile m "resources/new-mystery-ship.mp3")
+                     :new-mystery-bullet  (.loadFile m "resources/new-mystery-bullet.wav")
+                     :new-boss-bullet     (.loadFile m "resources/new-boss-bullet.wav")
                      :boss-shot           (.loadFile m "resources/boss-shot.aiff")
-                     :mystery-ship-dead   (.loadFile m "resources/mboom.wav")
-                     :invader-dead        (.loadFile m "resources/iboom.aiff")
-                     :invader-landed      (.loadFile m "resources/landing.wav")
-                     :player-dead         (.loadFile m "resources/pboom.wav")}})
+                     :mystery-ship-dead   (.loadFile m "resources/mystery-ship-dead.wav")
+                     :invader-dead        (.loadFile m "resources/invader-dead.aiff")
+                     :invader-landed      (.loadFile m "resources/invader-landed.wav")
+                     :player-dead         (.loadFile m "resources/player-dead.wav")}})
 
 (defn reset-board [{{w :w h :h} :board :as state}]
   "Returns a new version of the board with all 'mutable' values
