@@ -1,5 +1,5 @@
 (ns space-invaders.core
-  (:import [ddf.minim Minim AudioPlayer])
+  (:import [ddf.minim Minim])
   (:require [quil.core :as q :include-macros true]
             [quil.middleware :as m]))
 
@@ -20,7 +20,6 @@
          :x (+ start-x (* 75 (inc (rem i 8))))
          :y (+ start-y (* 75 (quot i 8)))}))))
 
-; TODO: Consider procedurally generating sprites.
 (defn load-digit-sprites []
   (into {}
     (for [digit "0123456789"]
@@ -48,33 +47,34 @@
    :stars           (make-stars w h)
    :player         {:x            (* 0.5 w)
                     :y            (* 0.9 h)
-                    :direction    0
-                    :sprite       (q/load-image "resources/player.png")}
+                    :direction    0}
    :player-bullets {:locations    []
                     :sprite       (q/load-image "resources/pbullet.png")}
    :patrol         {:invaders     (make-invaders)
                     :direction    1
-                    :dx           1
-                    :sprites      [(q/load-image "resources/invader1.png")
-                                   (q/load-image "resources/invader2.png")]}
+                    :dx           1}
    :invader-bullets {:locations   []
                      :sprite      (q/load-image "resources/ibullet.png")}
-   :mystery-ship    {:location    nil
-                     :sprites     (load-mystery-ship-sprites)}
+   :mystery-ship     nil
    :boss-ship       {:location    {:x 400 :y 400}
                      :direction-x 1
                      :direction-y 1
-                     :hits-left   25
-                     :sprites     [(q/load-image "resources/boss1.png")
-                                   (q/load-image "resources/boss2.png")]}
-   :score           {:value       0
-                     :sprites     (load-digit-sprites)}
-   :level           {:value       1
-                     :sprites     (load-digit-sprites)}
-   :lives           {:value       3
-                     :sprite      (q/load-image "resources/playersm.png")}
-   :letters         {:sprites     (load-letter-sprites)}
+                     :hits-left   25}
+   :score            0
+   :status           :waiting
+   :level            1
+   :lives            3
+   :events           []
 ;   :loops           (.loadFile m "resources/regular.wav")
+   :sprites         {:player       (q/load-image "resources/player.png")
+                     :lives        (q/load-image "resources/playersm.png")
+                     :digits       (load-digit-sprites)
+                     :letters      (load-letter-sprites)
+                     :invader      [(q/load-image "resources/invader1.png")
+                                    (q/load-image "resources/invader2.png")]
+                     :mystery-ship (load-mystery-ship-sprites)
+                     :boss-ship    [(q/load-image "resources/boss1.png")
+                                    (q/load-image "resources/boss2.png")]}
    :sounds          {:new-player-bullet   (.loadFile m "resources/player-bullet.wav")
                      :new-invader-bullet  (.loadFile m "resources/ilaser.wav")
                      :new-mystery-ship    (.loadFile m "resources/klaxon.mp3")
@@ -84,13 +84,13 @@
                      :mystery-ship-dead   (.loadFile m "resources/mboom.wav")
                      :invader-dead        (.loadFile m "resources/iboom.aiff")
                      :invader-landed      (.loadFile m "resources/landing.wav")
-                     :player-dead         (.loadFile m "resources/pboom.wav")}
-   :events           []})
+                     :player-dead         (.loadFile m "resources/pboom.wav")}})
 
 (defn reset-board [{{w :w h :h} :board :as state}]
   "Returns a new version of the board with all 'mutable' values
    in their orignal state."
   (-> state
+    (assoc-in [:status] :in-progress)
     (assoc-in [:events] [])
     (assoc-in [:player :x] (* 0.5 w))
     (assoc-in [:player :y] (* 0.9 h))
@@ -99,19 +99,19 @@
     (assoc-in [:patrol :dx] 1)
     (assoc-in [:invader-bullets :locations] [])
     (assoc-in [:player-bullets :locations] [])
-    (assoc-in [:score :value] 0)
-    (assoc-in [:level :value] 1)
-    (assoc-in [:lives :value] 3)))
+    (assoc-in [:score] 0)
+    (assoc-in [:level] 1)
+    (assoc-in [:lives] 3)))
 
-(defn game-over? [{{value :value} :lives :as state}]
-  (zero? value))
+(defn game-over? [{lives :lives :as state}]
+  (zero? lives))
 
-(defn regular-level? [{{value :value} :level :as state}]
-  (and (not (zero? (mod value 3)))
+(defn regular-level? [{level :level :as state}]
+  (and (not (zero? (mod level 3)))
        (not (game-over? state))))
 
-(defn boss-level? [{{value :value} :level :as state}]
-  (and (zero? (mod value 3))
+(defn boss-level? [{level :level :as state}]
+  (and (zero? (mod level 3))
        (not (game-over? state))))
 
 (defn invaders-reached-bottom? [{{h        :h}        :board
@@ -183,8 +183,7 @@
     (< 0)))
 
 (defn check-invaders-shot [{{invaders  :invaders}  :patrol
-                            {locations :locations} :player-bullets
-                             score                 :score :as state}]
+                            {locations :locations} :player-bullets :as state}]
   "Returns a new version of game state removing all bullets
    and invaders involved in collisions"
   (let [bullets-left-over     (remove (fn [bullet] (any-invader-shot? bullet invaders)) locations)
@@ -195,25 +194,24 @@
       (assoc-in [:player-bullets :locations] bullets-left-over)
       (assoc-in [:patrol :invaders] invaders-left-over)
       (update-in [:events] concat (repeat (count invaders-shot) :invader-dead))
-      (update-in [:score :value] (fn [score] (+ score points-scored))))))
+      (update-in [:score] + points-scored))))
 
-(defn check-mystery-ship-shot [{{locations        :locations} :player-bullets
-                                {mystery-location :location}  :mystery-ship
-                                 score                        :score :as state}]
+(defn check-mystery-ship-shot [{{locations :locations} :player-bullets
+                                 mystery-location      :mystery-ship
+                                 score                 :score :as state}]
   (if (nil? mystery-location)
     state
     (let [mystery-shot (entity-shot? mystery-location locations within-mystery-hitbox?)]
       (if mystery-shot
         (-> state
-          (update-in [:score :value] + 500)
-          (assoc-in [:mystery-ship :location] nil)
+          (update-in [:score] + 500)
+          (assoc-in [:mystery-ship] nil)
           (update-in [:events] conj :mystery-ship-dead))
          state))))
 
 (defn check-boss-shot [{{boss-location :location
                          hits-left     :hits-left} :boss-ship
-                        {locations     :locations} :player-bullets
-                         score                     :score :as state}]
+                        {locations     :locations} :player-bullets :as state}]
   "Returns a new version of game state removing all hitting player bullets"
   (let [bullets-missed      (remove (fn [bullet] (entity-shot? boss-location locations within-boss-hitbox?)) locations)
         bullets-hit         (filter (fn [bullet] (entity-shot? boss-location locations within-boss-hitbox?)) locations)
@@ -221,7 +219,7 @@
     (-> state
       (assoc-in [:player-bullets :locations] bullets-missed)
       (assoc-in [:boss-ship :hits-left] (- hits-left (count bullets-hit)))
-      (update-in [:score :value] (fn [score] (+ score points-scored)))
+      (update-in [:score] + points-scored)
       (update-in [:events] concat (repeat (count bullets-hit) :boss-shot)))))
 
 ; TODO: Figure out how to give extra points for grazing bullets.
@@ -234,16 +232,16 @@
         (assoc-in  [:player :y] (* 0.9 h))
         (assoc-in  [:invader-bullets :locations] [])
         (assoc-in  [:player-bullets :locations] [])
-        (assoc-in  [:mystery-ship :location] nil)
+        (assoc-in  [:mystery-ship] nil)
         (update-in [:events] conj :player-dead)
-        (update-in [:lives :value] dec))
+        (update-in [:lives] dec))
       state))
 
 (defn check-invaders-reached-bottom [state]
   (if (invaders-reached-bottom? state)
       (-> state
         (update-in [:events] conj :invader-landed)
-        (assoc-in [:lives :value] 0))
+        (assoc-in [:lives] 0))
     state))
 
 (defn check-invaders-cleared [{{invaders :invaders} :patrol :as state}]
@@ -251,7 +249,7 @@
    if no invaders remain or the state unchanged."
   (if (zero? (count invaders))
     (-> state
-      (update-in [:level :value] inc)
+      (update-in [:level] inc)
       (assoc-in [:patrol :invaders] (make-invaders))
       (assoc-in [:patrol :direction] 1)
       (assoc-in [:patrol :dx] 1))
@@ -260,7 +258,7 @@
 (defn check-boss-dead [{{hits-left :hits-left} :boss-ship :as state}]
   (if (zero? hits-left)
     (-> state
-      (update-in [:level :value] inc)
+      (update-in [:level] inc)
       (assoc-in [:boss-ship :location] {:x 400 :y 400})
       (assoc-in [:boss-ship :hits-left] 25)
       (assoc-in [:patrol :invaders] (make-invaders))
@@ -329,10 +327,10 @@
             (map (fn [invader] (update-in invader [:y] (fn [y] (+ y dy))))))
             )))))
 
-(defn move-mystery-ship [{{location :location} :mystery-ship :as state}]
+(defn move-mystery-ship [{location :mystery-ship :as state}]
   (if (nil? location)
     state
-    (update-in state [:mystery-ship :location :x] (fn [x] (+ x 5)))))
+    (update-in state [:mystery-ship :x] (fn [x] (+ x 5)))))
 
 ; TODO: Reconsider whether this needs to be a standalone function.
 (defn make-invader-bullet [{x :x y :y}]
@@ -371,8 +369,8 @@
       (update-in [:events] concat (repeat (count new-bullets) :new-invader-bullet))
       (update-in [:invader-bullets :locations] (fn [bullets] (concat bullets new-bullets))))))
 
-(defn generate-mystery-ship-bullets [{{location :location} :mystery-ship
-                                      {sound    :sound}    :invader-bullets :as state}]
+(defn generate-mystery-ship-bullets [{location       :mystery-ship
+                                      {sound :sound} :invader-bullets :as state}]
   (cond
     (nil? location)
       state
@@ -395,25 +393,27 @@
         (update-in [:events] conj :new-boss-bullet)))))
 
 ; TODO: Change strategy for determining when to bring out the mystery ship.
-(defn update-mystery-ship [{{w        :w}        :board
-                            {location :location} :mystery-ship :as state}]
+(defn update-mystery-ship [{{w :w}    :board
+                             location :mystery-ship :as state}]
   "Returns a new version of the state with either a new mystery ship
    or it's being removed from the board."
   (cond
     (and (nil? location) (zero? (mod (q/frame-count) 1000)))
       (-> state
-        (assoc-in [:mystery-ship :location] {:x -128 :y 75})
+        (assoc-in [:mystery-ship] {:x -128 :y 75})
         (update-in [:events] conj :new-mystery-ship))
     (> (:x location 0) (+ w 128))
       (-> state
-        (assoc-in [:mystery-ship :location] nil)
+        (assoc-in [:mystery-ship] nil)
         (update-in [:events] conj :mystery-ship-gone))
     :else
       state))
 
-(defn update-board [state]
+(defn update-board [{status :status :as state}]
   "Primary hook which updates the entire game state before the next frame is drawn"
   (cond
+    (= status :waiting)
+      state
     (regular-level? state)
       (-> state
         clear-previous-events
@@ -478,7 +478,7 @@
     * moving the player left or right
     * generating a new bullet"
   (cond
-    (and (= :s key) (game-over? state))
+    (and (= :s key))
       (reset-board state)
     (and (= 32 key-code) (no-player-bullets? state))
       (add-player-bullet state)
@@ -500,9 +500,8 @@
     (doto music .unmute .rewind .loop))
   state)
 
-(defn draw-player [{{x      :x
-                     y      :y
-                     sprite :sprite} :player}]
+(defn draw-player [{{x :x y :y}      :player
+                    {sprite :player} :sprites}]
   "Renders the player to the screen"
   (q/push-matrix)
   (q/translate x y)
@@ -516,8 +515,8 @@
 
 ; TODO: Think about how to draw exploded invaders,
 ;         possibly introduce :status property for each invader
-(defn draw-patrol [{{invaders :invaders
-                     sprites  :sprites} :patrol}]
+(defn draw-patrol [{{invaders :invaders} :patrol
+                    {sprites  :invader}  :sprites}]
   "Renders the entire invader patrol to the screen"
   ; This tick insures that sprites alternate over time...
   (let [tick (quot (q/frame-count) 30)]
@@ -530,58 +529,62 @@
       (let [sprite-idx (mod (+ tick invader-idx (quot invader-idx 8)) 2)]
         (q/image (sprites sprite-idx) invader-x invader-y)))))
 
-(defn draw-mystery-ship [{{location :location
-                           sprites  :sprites} :mystery-ship}]
+(defn draw-mystery-ship [{location                :mystery-ship
+                          {sprites :mystery-ship} :sprites}]
   (if (not (nil? location))
     (let [tick (quot (q/frame-count) 10)
           idx  (mod tick (count sprites))]
       (q/image (sprites idx) (:x location) (:y location)))))
 
-(defn draw-boss-ship [{{{x :x y :y} :location
-                        sprites     :sprites} :boss-ship}]
+(defn draw-boss-ship [{{{x :x y :y} :location}  :boss-ship
+                        {sprites    :boss-ship} :sprites}]
   (let [tick (quot (q/frame-count) 30)
         idx  (mod tick (count sprites))]
     (q/image (sprites idx) x y)))
 
-(defn draw-score [{{value   :value
-                    sprites :sprites} :score}]
+(defn draw-score [{score            :score
+                  {digits :digits} :sprites}]
   "Renders the current score to the screen"
   (q/push-matrix)
   (q/translate 25 25)
-  (doseq [digit (str value)]
-    (q/image (sprites digit) 0 0)
+  (doseq [digit (str score)]
+    (q/image (digits digit) 0 0)
     (q/translate 32 0))
   (q/pop-matrix))
 
-(defn draw-lives [{{value  :value
-                    sprite :sprite} :lives
-                   {w      :w}      :board}]
+(defn draw-lives [{lives           :lives
+                   {sprite :lives} :sprites
+                   {w      :w}     :board}]
   "Renders the number of lives left for the player"
   (let [sprite-width 32]
     (q/push-matrix)
     (q/translate (- w sprite-width) sprite-width)
-    (dotimes [_ value]
+    (dotimes [_ lives]
       (q/image sprite 0 0)
       (q/translate (- sprite-width) 0))
     (q/pop-matrix)))
 
-(defn draw-level [{{value   :value
-                    sprites :sprites} :level
-                   {w       :w
-                    h       :h}     :board}]
+(defn draw-level [{level           :level
+                  {digits :digits} :sprites
+                  {w      :w
+                   h      :h}     :board}]
   "Renders the current level to the screen"
   (let [sprite-width 32]
     (q/push-matrix)
     (q/translate (- w sprite-width) (- h sprite-width))
-    (doseq [digit (str value)]
-      (q/image (sprites digit) 0 0)
+    (doseq [digit (str level)]
+      (q/image (digits digit) 0 0)
       (q/translate (- sprite-width) 0))
     (q/pop-matrix)))
+
+(defn draw-start-screen [state]
+  (q/text "Press S to start" 200 200)
+  )
 
 ; TODO: Possibly play some thing amusing like a sad trombone clip. (BUT ONLY ONCE!)
 (defn draw-game-over [{{music   :music
                         h       :h} :board
-                       {sprites :sprites} :letters}]
+                       {sprites :letters} :sprites}]
   (let [letter-width 100]
     (q/background 0)
     (q/push-matrix)
@@ -667,10 +670,12 @@
 ; TODO: Need start screen with directions.
 ;       Need to implement levels
 ;       Need to implement boss level
-(defn draw-board [state]
+(defn draw-board [{status :status :as state}]
   "Primary hook to render all entities to the screen"
   (handle-sounds state)
   (cond
+    (= status :waiting)
+      (draw-start-screen state)
     (regular-level? state)
       (draw-regular-level state)
     (boss-level? state)
