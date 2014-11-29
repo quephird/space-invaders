@@ -48,13 +48,11 @@
    :player         {:x            (* 0.5 w)
                     :y            (* 0.9 h)
                     :direction    0}
-   :player-bullets {:locations    []
-                    :sprite       (q/load-image "resources/pbullet.png")}
+   :player-bullets {:locations    []}
    :patrol         {:invaders     (make-invaders)
                     :direction    1
                     :dx           1}
-   :invader-bullets {:locations   []
-                     :sprite      (q/load-image "resources/ibullet.png")}
+   :invader-bullets {:locations   []}
    :mystery-ship     nil
    :boss-ship       {:location    {:x 400 :y 400}
                      :direction-x 1
@@ -66,15 +64,17 @@
    :lives            3
    :events           []
 ;   :loops           (.loadFile m "resources/regular.wav")
-   :sprites         {:player       (q/load-image "resources/player.png")
-                     :lives        (q/load-image "resources/playersm.png")
-                     :digits       (load-digit-sprites)
-                     :letters      (load-letter-sprites)
-                     :invader      [(q/load-image "resources/invader1.png")
-                                    (q/load-image "resources/invader2.png")]
-                     :mystery-ship (load-mystery-ship-sprites)
-                     :boss-ship    [(q/load-image "resources/boss1.png")
-                                    (q/load-image "resources/boss2.png")]}
+   :sprites         {:player          (q/load-image "resources/player.png")
+                     :player-bullet   (q/load-image "resources/player-bullet.png")
+                     :lives           (q/load-image "resources/life.png")
+                     :digits          (load-digit-sprites)
+                     :letters         (load-letter-sprites)
+                     :invader         [(q/load-image "resources/invader1.png")
+                                       (q/load-image "resources/invader2.png")]
+                     :invader-bullet  (q/load-image "resources/invader-bullet.png")
+                     :mystery-ship    (load-mystery-ship-sprites)
+                     :boss-ship       [(q/load-image "resources/boss1.png")
+                                       (q/load-image "resources/boss2.png")]}
    :sounds          {:new-player-bullet   (.loadFile m "resources/new-player-bullet.wav")
                      :new-invader-bullet  (.loadFile m "resources/new-invader-bullet.wav")
                      :new-mystery-ship    (.loadFile m "resources/new-mystery-ship.mp3")
@@ -508,9 +508,16 @@
   (q/image sprite 0 0)
   (q/pop-matrix))
 
-(defn draw-bullets [{bullets :locations sprite :sprite}]
+(defn draw-player-bullets [{{locations :locations}     :player-bullets
+                            {sprite    :player-bullet} :sprites}]
   "Renders all player bullets to the screen"
-  (doseq [{x :x y :y} bullets]
+  (doseq [{x :x y :y} locations]
+    (q/image sprite x y)))
+
+(defn draw-invader-bullets [{{locations :locations}      :invader-bullets
+                             {sprite    :invader-bullet} :sprites}]
+  "Renders all player bullets to the screen"
+  (doseq [{x :x y :y} locations]
     (q/image sprite x y)))
 
 ; TODO: Think about how to draw exploded invaders,
@@ -641,13 +648,12 @@
           (Thread/sleep 5000))
       nil)))
 
-(defn draw-regular-level [{player-bullets  :player-bullets
-                           invader-bullets :invader-bullets :as state}]
+(defn draw-regular-level [state]
 ;  (play-background-music state)
   (draw-stars state)
   (draw-player state)
-  (draw-bullets player-bullets)
-  (draw-bullets invader-bullets)
+  (draw-player-bullets state)
+  (draw-invader-bullets state)
   (draw-patrol state)
   (draw-mystery-ship state)
   (draw-score state)
@@ -655,13 +661,12 @@
   (draw-level state)
   )
 
-(defn draw-boss-level [{player-bullets  :player-bullets
-                        invader-bullets :invader-bullets :as state}]
+(defn draw-boss-level [state]
   (draw-stars state)
   (draw-player state)
   (draw-boss-ship state)
-  (draw-bullets player-bullets)
-  (draw-bullets invader-bullets)
+  (draw-player-bullets state)
+  (draw-invader-bullets state)
   (draw-score state)
   (draw-lives state)
   (draw-level state)
