@@ -47,7 +47,9 @@
                     :h            h}
    :stars           (make-stars w h)
    :player         {:x            (* 0.5 w)
-                    :y            (* 0.9 h)}
+                    :y            (* 0.9 h)
+                    :direction    0
+                    :sprite       (q/load-image "resources/player.png")}
    :player-bullets {:locations    []
                     :sprite       (q/load-image "resources/pbullet.png")}
    :patrol         {:invaders     (make-invaders)
@@ -121,6 +123,16 @@
 
 (defn clear-previous-events [state]
   (assoc-in state [:events] []))
+
+(defn grazed-bullet? [{player-x :x player-y :y}
+                      {bullet-x :x bullet-y :y}]
+  "Returns true if the bullet is sufficiently close to the player
+   and should count as a graze."
+  (let [range-x 5
+        range-y 5
+        dy      (+ range-y bullet-y (- player-y))]
+    (and (< (Math/abs (- bullet-y player-y)) range-y)
+         (< (Math/abs (- bullet-x player-x)) (/ (* dy range-x) 2 range-y)))))
 
 (defn within-player-hitbox? [{player-x :x player-y :y}
                              {bullet-x :x bullet-y :y}]
@@ -364,7 +376,7 @@
   (cond
     (nil? location)
       state
-    (> (q/random 1) 0.05)
+    (not (zero? (mod (q/frame-count) 30)))
       state
     :else
       (let [new-bullets (into [] (map (fn [n] (update-in location [:x] (fn [x] (+ x n)))) [-30 0 30]))]
@@ -410,6 +422,7 @@
         check-invaders-shot
         check-invaders-cleared
         check-mystery-ship-shot
+        move-player
         move-stars
         move-invader-bullets
         move-player-bullets
@@ -426,6 +439,7 @@
         check-player-shot
         check-boss-dead
         check-boss-shot
+        move-player
         move-boss-ship
         move-invader-bullets
         move-player-bullets
@@ -433,17 +447,25 @@
     :else
       (clear-previous-events state)))
 
-(defn move-player [{{x   :x} :player
-                    {w   :w} :board  :as state}
-                    {key :key        :as event}]
+; TODO: Call this from the update loop with out key detection;
+;         make new function to set only direction in player object
+;         based on which arrow key was pressed.
+(defn move-player [{{x         :x
+                     direction :direction} :player
+                    {w         :w}         :board  :as state}]
+;                    {key :key        :as event}]
   "Returns a new version of the board state representing
    a change in position of the player"
   (let [margin 125
         dx (cond
-              (and (= key :left) (> x margin)) -10
-              (and (= key :right) (< x (- w margin))) 10
+              (and (= direction -1) (> x margin)) -10
+              (and (= direction 1) (< x (- w margin))) 10
               :else 0)]
     (update-in state [:player :x] (fn [x] (+ x dx)))))
+
+(defn update-player-direction [state
+                               {key :key :as event}]
+  (assoc-in state [:player :direction] (if (= key :left) -1 1)))
 
 ; TODO: Figure out how to move sound clip playing out into main draw routine.
 (defn add-player-bullet [{{x :x y :y} :player
@@ -469,9 +491,16 @@
     (and (= 32 key-code) (no-player-bullets? state))
       (add-player-bullet state)
     (contains? #{:left :right} key)
-      (move-player state event)
+      (update-player-direction state event)
+;      (move-player state event)
     :else
       state))
+
+(defn key-released [state]
+  (let [code (q/key-code)]
+    (if (or (= code 37) (= code 39))
+      (assoc-in state [:player :direction] 0)
+      state)))
 
 (defn play-background-music [{music :loops :as state}]
   (if (not (.isLooping music))
@@ -484,19 +513,8 @@
   "Renders the player to the screen"
   (q/push-matrix)
   (q/translate x y)
-  (q/stroke 150 100 255)
-  (q/stroke-weight 1)
-  (q/no-fill)
-  (q/begin-shape)
-  (doseq [[vx vy] [[0 -20]
-                   [20 32]
-                   [10 20]
-                   [-10 20]
-                   [-20 32]]]
-    (q/vertex vx vy))
-  (q/end-shape :close)
+  (q/image sprite 0 0)
   (q/pop-matrix))
-;  (q/image sprite x y))
 
 (defn draw-bullets [{bullets :locations sprite :sprite}]
   "Renders all player bullets to the screen"
@@ -510,6 +528,8 @@
   "Renders the entire invader patrol to the screen"
   ; This tick insures that sprites alternate over time...
   (let [tick (quot (q/frame-count) 30)]
+    (q/stroke-weight 1)
+    (q/stroke 120 255 255)
     (doseq [{invader-idx :idx
              invader-x   :x
              invader-y   :y} invaders]
@@ -573,7 +593,6 @@
     (q/background 0)
     (q/push-matrix)
     (q/translate (* 0.5 letter-width) (* 0.5 h))
-;    (doto music .mute .play)
     (doseq [letter "GAMEOVER"]
       (q/image (sprites letter) 0 0)
       (q/translate letter-width 0))
@@ -582,13 +601,11 @@
 (defn draw-stars [{{w :w h :h} :board
                    stars       :stars}]
   (q/background 0)
-  (q/stroke-weight 1)
+  (q/stroke-weight 6)
   (doseq [{x :x y :y} stars]
-    (q/stroke-weight 1)
-    (q/stroke (q/random 255) 255 255)
-    (q/line (- x 6) (- y 6) (+ x 6) (+ y 6))
-    (q/line (- x 6) (+ y 6) (+ x 6) (- y 6))
-    (q/stroke-weight 4)
+    (if (< 0.8 (q/random 1))
+      (q/stroke (q/random 255) 255 255)
+      (q/stroke 0 0 255))
     (q/point x y)
     ))
 
@@ -677,6 +694,7 @@
     (q/smooth)
     (q/color-mode :hsb)
     (q/image-mode :center)
+    (q/rect-mode :center)
     (create-board w h m)))
 
 (defn stop-all-sounds [{music  :loops
@@ -689,11 +707,12 @@
 ; TODO: Figure out how to configure this project such that
 ;         lein uberjar produces an executable jar.
 (q/defsketch space-invaders
-  :title       "space invaders"
-  :size        [800 800]
-  :setup       setup
-  :draw        draw-board
-  :key-pressed key-pressed
-  :update      update-board
-  :on-close    stop-all-sounds
-  :middleware  [m/fun-mode])
+  :title        "space invaders"
+  :size         [800 800]
+  :setup        setup
+  :draw         draw-board
+  :key-pressed  key-pressed
+  :key-released key-released
+  :update       update-board
+  :on-close     stop-all-sounds
+  :middleware   [m/fun-mode])
