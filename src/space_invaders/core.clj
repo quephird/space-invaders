@@ -39,7 +39,6 @@
 ;         of the bullets too.
 ;       Make probability of generating a bullet a property
 ;         that can be "mutated" to increase difficulty
-;       Need to move sprites into separate nested hashmap.
 (defn create-board [w h m]
   "Returns a nested hashmap representing the entire state of the game"
   {:board          {:w            w
@@ -63,6 +62,7 @@
    :level            1
    :lives            3
    :events           []
+;   :font            (q/load-font "resources/arcade-classic.ttf")
 ;   :loops           (.loadFile m "resources/regular.wav")
    :sprites         {:player          (q/load-image "resources/player.png")
                      :player-bullet   (q/load-image "resources/player-bullet.png")
@@ -468,9 +468,7 @@
     (-> state
       (update-in [:player-bullets] conj new-bullet))))
 
-; TODO: Figure out why player stops moving after hitting the space key
-;         with left or right key still depressed.
-(defn key-pressed [state
+(defn key-pressed [{status   :status :as state}
                    {key      :key
                     key-code :key-code :as event}]
   "Primary hook to return new version of game state taking into account:
@@ -478,9 +476,9 @@
     * moving the player left or right
     * generating a new bullet"
   (cond
-    (and (= :s key))
+    (and (= :s key) (= status :waiting))
       (reset-board state)
-    (and (= 32 key-code) (no-player-bullets? state))
+    (and (= 32 key-code) (not= status :waiting) (no-player-bullets? state))
       (add-player-bullet state)
     (= :left key)
       (assoc-in state [:player :direction] -1)
@@ -585,7 +583,18 @@
     (q/pop-matrix)))
 
 (defn draw-start-screen [state]
-  (q/text "Press S to start" 200 200)
+  (q/background 0)
+  (-> (q/create-font "Courier" 48)
+    (q/text-font))
+  (q/fill 100 255 255)
+  (q/text "(:space-invaders" 50 200)
+  (q/text "  :in :quil)" 50 250)
+  (q/text "" 50 300)
+  (q/text "(case key-code" 50 350)
+  (q/text "  :s" 50 400)
+  (q/text "    (start-game)" 50 450)
+  (q/text "  :else" 50 500)
+  (q/text "    (stare-at-this-screen))" 50 550)
   )
 
 ; TODO: Possibly play some thing amusing like a sad trombone clip. (BUT ONLY ONCE!)
