@@ -35,6 +35,10 @@
     (for [i (range 1 6)]
       (q/load-image (str "resources/mystery" i ".png")))))
 
+(defn load-font []
+  (->> (clojure.java.io/resource "resources/arcade.ttf")
+	  (q/load-font)))
+
 ; TODO: Possibly introduce increasing difficulty by making speed a property
 ;         of the bullets too.
 ;       Make probability of generating a bullet a property
@@ -62,7 +66,7 @@
    :level            1
    :lives            3
    :events           []
-;   :font            (q/load-font "resources/arcade-classic.ttf")
+;   :font             (load-font)
 ;   :loops           (.loadFile m "resources/regular.wav")
    :sprites         {:player          (q/load-image "resources/player.png")
                      :player-bullet   (q/load-image "resources/player-bullet.png")
@@ -582,7 +586,7 @@
       (q/translate (- sprite-width) 0))
     (q/pop-matrix)))
 
-(defn draw-start-screen [state]
+(defn draw-start-screen [{font :font :as state}]
   (let [all-text [[[100 255 255] "(" 20 200]
                   [[200 255 255] ":space-invaders" 50 200]
                   [[200 255 255] "  :in :quil" 20 250]
