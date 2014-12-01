@@ -583,47 +583,30 @@
     (q/pop-matrix)))
 
 (defn draw-start-screen [state]
-  (q/background 0)
-  (-> (q/create-font "Courier" 48)
-    (q/text-font))
-  (q/fill 100 255 255)
-  (q/text "(" 20 200)
-  (q/fill 200 255 255)
-  (q/text ":space-invaders" 50 200)
+  (let [all-text [[[100 255 255] "(" 20 200]
+                  [[200 255 255] ":space-invaders" 50 200]
+                  [[200 255 255] "  :in :quil" 20 250]
+                  [[100 255 255] ")" 350 250]
+                  [[100 255 255] "" 20 300]
+                  [[100 255 255] "(" 20 350]
+                  [[120 200 200] "case " 50 350]
+                  [[0 0 127] "key-code" 200 350]
+                  [[200 255 255] "  :s" 20 400]
+                  [[127 255 255] "    (" 20 450]
+                  [[0 0 127] "start-game" 170 450]
+                  [[127 255 255] ")" 470 450]
+                  [[200 255 255] ":else" 20 500]
+                  [[127 255 255] "    (" 20 550]
+                  [[0 0 127] "stare-at-this-screen" 170 550]
+                  [[127 255 255] ")" 750 550]]]
+    (q/background 0)
+    (-> (q/create-font "Courier" 48)
+      (q/text-font))
 
-  (q/text "  :in :quil" 20 250)
-  (q/fill 100 255 255)
-  (q/text ")" 350 250)
-
-  (q/text "" 20 300)
-
-  (q/fill 100 255 255)
-  (q/text "(" 20 350)
-  (q/fill 120 200 200)
-  (q/text "case " 50 350)
-  (q/fill 0 0 127)
-  (q/text "key-code" 200 350)
-
-  (q/fill 200 255 255)
-  (q/text "  :s" 20 400)
-
-  (q/fill 127 255 255)
-  (q/text "    (" 20 450)
-  (q/fill 0 0 127)
-  (q/text "start-game" 170 450)
-  (q/fill 127 255 255)
-  (q/text ")" 470 450)
-
-  (q/fill 200 255 255)
-  (q/text "  :else" 20 500)
-
-  (q/fill 127 255 255)
-  (q/text "    (" 20 550)
-  (q/fill 0 0 127)
-  (q/text "stare-at-this-screen" 170 550)
-  (q/fill 127 255 255)
-  (q/text ")" 750 550)
-  )
+    (doseq [[text-color text x y] all-text]
+      (apply q/fill text-color)
+      (q/text text x y))
+    ))
 
 ; TODO: Possibly play some thing amusing like a sad trombone clip. (BUT ONLY ONCE!)
 (defn draw-game-over [{{music   :music
