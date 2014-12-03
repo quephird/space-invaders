@@ -66,7 +66,9 @@
    :level            1
    :lives            3
    :events           []
-;   :font             (load-font)
+   :fonts           {:start           (q/create-font "Courier" 48)
+                     :game            (q/create-font "Courier" 32)
+                     :game-over       (q/create-font "Courier" 60)}
 ;   :loops           (.loadFile m "resources/regular.wav")
    :sprites         {:player          (q/load-image "resources/player.png")
                      :player-bullet   (q/load-image "resources/player-bullet.png")
@@ -230,6 +232,7 @@
 ; TODO: Figure out how to give extra points for grazing bullets.
 (defn check-player-shot [{{w :w h :h}      :board
                            invader-bullets :invader-bullets
+                           lives           :lives
                            player          :player :as state}]
     (if (entity-shot? player invader-bullets within-player-hitbox?)
       (-> state
@@ -239,7 +242,8 @@
         (assoc-in  [:player-bullets] [])
         (assoc-in  [:mystery-ship] nil)
         (update-in [:events] conj :player-dead)
-        (update-in [:lives] dec))
+        (update-in [:lives] dec)
+        (assoc-in [:status] (if (= 1 lives) :game-over :in-progress)))
       state))
 
 (defn check-invaders-reached-bottom [state]
@@ -270,6 +274,18 @@
       (assoc-in [:patrol :direction] 1)
       (assoc-in [:patrol :dx] 1))
     state))
+
+(defn move-player [{{x         :x
+                     direction :direction} :player
+                    {w         :w}         :board  :as state}]
+  "Returns a new version of the board state representing
+   a change in position of the player"
+  (let [margin 125
+        dx (cond
+              (and (= direction -1) (> x margin)) -10
+              (and (= direction 1) (< x (- w margin))) 10
+              :else 0)]
+    (update-in state [:player :x] (fn [x] (+ x dx)))))
 
 (defn move-stars [{stars :stars :as state}]
   (assoc-in state [:stars]
@@ -451,18 +467,6 @@
     :else
       (clear-previous-events state)))
 
-(defn move-player [{{x         :x
-                     direction :direction} :player
-                    {w         :w}         :board  :as state}]
-  "Returns a new version of the board state representing
-   a change in position of the player"
-  (let [margin 125
-        dx (cond
-              (and (= direction -1) (> x margin)) -5
-              (and (= direction 1) (< x (- w margin))) 5
-              :else 0)]
-    (update-in state [:player :x] (fn [x] (+ x dx)))))
-
 ; TODO: Figure out how to move sound clip playing out into main draw routine.
 (defn add-player-bullet [{{x :x y :y} :player
                           sounds      :sounds :as state}]
@@ -480,7 +484,7 @@
     * moving the player left or right
     * generating a new bullet"
   (cond
-    (and (= :s key) (= status :waiting))
+    (and (= :s key) (contains? #{:waiting :game-over} status))
       (reset-board state)
     (and (= 32 key-code) (not= status :waiting) (no-player-bullets? state))
       (add-player-bullet state)
@@ -551,40 +555,47 @@
         idx  (mod tick (count sprites))]
     (q/image (sprites idx) x y)))
 
-(defn draw-score [{score            :score
-                  {digits :digits} :sprites}]
+(defn draw-score [{score           :score
+                  {digits :digits} :sprites
+                  {font   :game}   :fonts}]
   "Renders the current score to the screen"
-  (q/push-matrix)
-  (q/translate 25 25)
-  (doseq [digit (str score)]
-    (q/image (digits digit) 0 0)
-    (q/translate 32 0))
-  (q/pop-matrix))
+
+  (q/text-font font)
+  (q/fill 100 255 255)
+  (q/text "{" 10 32)
+  (q/fill 200 255 255)
+  (q/text ":score" 30 32)
+  (q/fill 0 0 127)
+  (q/text (str score) 170 32)
+  (q/fill 100 255 255)
+  (q/text "}" (+ 170 (* 20 (count (str score)))) 32))
 
 (defn draw-lives [{lives           :lives
                    {sprite :lives} :sprites
-                   {w      :w}     :board}]
+                   {font   :game}  :fonts}]
   "Renders the number of lives left for the player"
-  (let [sprite-width 32]
-    (q/push-matrix)
-    (q/translate (- w sprite-width) sprite-width)
-    (dotimes [_ lives]
-      (q/image sprite 0 0)
-      (q/translate (- sprite-width) 0))
-    (q/pop-matrix)))
+  (q/text-font font)
+  (q/fill 100 255 255)
+  (q/text "{" 590 32)
+  (q/fill 200 255 255)
+  (q/text ":lives" 610 32)
+  (q/fill 0 0 127)
+  (q/text (str lives) 750 32)
+  (q/fill 100 255 255)
+  (q/text "}" 770 32))
 
 (defn draw-level [{level           :level
                   {digits :digits} :sprites
-                  {w      :w
-                   h      :h}     :board}]
-  "Renders the current level to the screen"
-  (let [sprite-width 32]
-    (q/push-matrix)
-    (q/translate (- w sprite-width) (- h sprite-width))
-    (doseq [digit (str level)]
-      (q/image (digits digit) 0 0)
-      (q/translate (- sprite-width) 0))
-    (q/pop-matrix)))
+                  {font   :game}   :fonts}]
+  (q/text-font font)
+  (q/fill 100 255 255)
+  (q/text "{" 590 780)
+  (q/fill 200 255 255)
+  (q/text ":level" 610 780)
+  (q/fill 0 0 127)
+  (q/text (str level) 750 780)
+  (q/fill 100 255 255)
+  (q/text "}" 770 780))
 
 (defn draw-start-screen [{font :font :as state}]
   (let [all-text [[[100 255 255] "(" 20 200]
@@ -604,8 +615,7 @@
                   [[0 0 127] "stare-at-this-screen" 170 550]
                   [[127 255 255] ")" 750 550]]]
     (q/background 0)
-    (-> (q/create-font "Courier" 48)
-      (q/text-font))
+    (q/text-font (q/create-font "Courier" 48))
 
     (doseq [[text-color text x y] all-text]
       (apply q/fill text-color)
@@ -613,17 +623,17 @@
     ))
 
 ; TODO: Possibly play some thing amusing like a sad trombone clip. (BUT ONLY ONCE!)
-(defn draw-game-over [{{music   :music
-                        h       :h} :board
-                       {sprites :letters} :sprites}]
-  (let [letter-width 100]
-    (q/background 0)
-    (q/push-matrix)
-    (q/translate (* 0.5 letter-width) (* 0.5 h))
-    (doseq [letter "GAMEOVER"]
-      (q/image (sprites letter) 0 0)
-      (q/translate letter-width 0))
-    (q/pop-matrix)))
+(defn draw-game-over [{{font :game-over} :fonts}]
+  (q/background 0)
+  (q/text-font font)
+
+  (q/fill 100 255 255)
+  (q/text "{" 50 400)
+  (q/fill 200 255 255)
+  (q/text ":game-status :over" 85 400)
+  (q/fill 100 255 255)
+  (q/text "}" 740 400)
+  )
 
 (defn draw-stars [{{w :w h :h} :board
                    stars       :stars}]
