@@ -20,24 +20,10 @@
          :x (+ start-x (* 75 (inc (rem i 8))))
          :y (+ start-y (* 75 (quot i 8)))}))))
 
-(defn load-digit-sprites []
-  (into {}
-    (for [digit "0123456789"]
-      [digit (q/load-image (str "resources/" digit ".png"))])))
-
-(defn load-letter-sprites []
-  (into {}
-    (for [letter "GAMEOVR"]
-      [letter (q/load-image (str "resources/" letter ".png"))])))
-
 (defn load-mystery-ship-sprites []
   (into []
     (for [i (range 1 6)]
       (q/load-image (str "resources/mystery" i ".png")))))
-
-(defn load-font []
-  (->> (clojure.java.io/resource "resources/arcade.ttf")
-	  (q/load-font)))
 
 ; TODO: Possibly introduce increasing difficulty by making speed a property
 ;         of the bullets too.
@@ -73,8 +59,6 @@
    :sprites         {:player          (q/load-image "resources/player.png")
                      :player-bullet   (q/load-image "resources/player-bullet.png")
                      :lives           (q/load-image "resources/life.png")
-                     :digits          (load-digit-sprites)
-                     :letters         (load-letter-sprites)
                      :invader         [(q/load-image "resources/invader1.png")
                                        (q/load-image "resources/invader2.png")]
                      :invader-bullet  (q/load-image "resources/invader-bullet.png")
@@ -282,8 +266,8 @@
    a change in position of the player"
   (let [margin 125
         dx (cond
-              (and (= direction -1) (> x margin)) -10
-              (and (= direction 1) (< x (- w margin))) 10
+              (and (= direction -1) (> x margin)) -5
+              (and (= direction 1) (< x (- w margin))) 5
               :else 0)]
     (update-in state [:player :x] (fn [x] (+ x dx)))))
 
