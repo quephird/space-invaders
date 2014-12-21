@@ -22,7 +22,7 @@
 
 (defn load-mystery-ship-sprites []
   (into []
-    (for [i (range 1 6)]
+    (for [i (range 1 4)]
       (q/load-image (str "resources/mystery" i ".png")))))
 
 ; TODO: Possibly introduce increasing difficulty by making speed a property
@@ -479,6 +479,8 @@
     :else
       state))
 
+; TODO: Need to contact quil folks about this;
+;         shouldn't key-relased also receive the event?
 (defn key-released [state]
   (let [code (q/key-code)]
     (if (or (= code 37) (= code 39))
@@ -622,12 +624,11 @@
 (defn draw-stars [{{w :w h :h} :board
                    stars       :stars}]
   (q/background 0)
-  (q/stroke-weight 6)
   (doseq [{x :x y :y} stars]
     (if (< 0.8 (q/random 1))
       (q/stroke (q/random 255) 255 255)
       (q/stroke 0 0 255))
-    (q/point x y)
+    (q/rect x y 4 4)
     ))
 
 (defn handle-sounds [{sounds :sounds
@@ -713,6 +714,7 @@
         h (q/height)
         m (Minim.)]
     (q/smooth)
+    (q/no-stroke)
     (q/color-mode :hsb)
     (q/image-mode :center)
     (q/rect-mode :center)
