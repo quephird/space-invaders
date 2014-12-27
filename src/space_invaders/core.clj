@@ -39,6 +39,7 @@
                     :direction    0}
    :player-bullets  []
    :patrol         {:invaders     (make-invaders)
+                    :invader-explosions []
                     :direction    1
                     :dx           1}
    :invader-bullets  []
@@ -62,6 +63,9 @@
                      :invader         [(q/load-image "resources/invader1.png")
                                        (q/load-image "resources/invader2.png")]
                      :invader-bullet  (q/load-image "resources/invader-bullet.png")
+                     :invader-explosion [(q/load-image "resources/invader-explosion1.png")
+                                         (q/load-image "resources/invader-explosion2.png")
+                                         ]
                      :mystery-ship    (load-mystery-ship-sprites)
                      :boss-ship       [(q/load-image "resources/boss1.png")
                                        (q/load-image "resources/boss2.png")]}
@@ -113,6 +117,13 @@
 
 (defn clear-previous-events [state]
   (assoc-in state [:events] []))
+
+(defn update-explosions [state]
+  (update-in state [:patrol :invader-explosions]
+    (fn [explosions]
+      (->> explosions
+        (filter (fn [{stage :stage}] (< stage 1)))
+        (map (fn [explosion] (update-in explosion [:stage] inc)))))))
 
 (defn grazed-bullet? [{player-x :x player-y :y}
                       {bullet-x :x bullet-y :y}]
@@ -172,17 +183,21 @@
     count
     (< 0)))
 
-(defn check-invaders-shot [{{invaders  :invaders}  :patrol
+(defn check-invaders-shot [{{invaders           :invaders
+                             invader-explosions :invader-explosions}  :patrol
                              player-bullets :player-bullets :as state}]
   "Returns a new version of game state removing all bullets
    and invaders involved in collisions"
   (let [bullets-left-over     (remove (fn [bullet] (any-invader-shot? bullet invaders)) player-bullets)
-        invaders-shot         (filter (fn [invader] (entity-shot? invader player-bullets within-invader-hitbox?)) invaders)
+        invaders-shot         (->> invaders
+                                (filter (fn [invader] (entity-shot? invader player-bullets within-invader-hitbox?))))
         invaders-left-over    (remove (set invaders-shot) invaders)
+        new-explosions        (map (fn [invader] (assoc-in invader [:stage] 0)) invaders-shot)
         points-scored         (* (count invaders-shot) 100)]
     (-> state
       (assoc-in [:player-bullets] bullets-left-over)
       (assoc-in [:patrol :invaders] invaders-left-over)
+      (update-in [:patrol :invader-explosions] concat new-explosions)
       (update-in [:events] concat (repeat (count invaders-shot) :invader-dead))
       (update-in [:score] + points-scored))))
 
@@ -421,6 +436,7 @@
     (regular-level? state)
       (-> state
         clear-previous-events
+        update-explosions
         check-player-shot
         check-invaders-reached-bottom
         check-invaders-shot
@@ -514,19 +530,27 @@
 
 ; TODO: Think about how to draw exploded invaders,
 ;         possibly introduce :status property for each invader
-(defn draw-patrol [{{invaders :invaders} :patrol
-                    {sprites  :invader}  :sprites}]
+(defn draw-patrol [{{invaders :invaders
+                     invader-explosions :invader-explosions} :patrol
+                    {sprites    :invader
+                     explosions :invader-explosion}  :sprites}]
   "Renders the entire invader patrol to the screen"
   ; This tick insures that sprites alternate over time...
-  (let [tick (quot (q/frame-count) 30)]
+  (let [tick              (quot (q/frame-count) 30)]
     (q/stroke-weight 1)
     (q/stroke 120 255 255)
-    (doseq [{invader-idx :idx
-             invader-x   :x
-             invader-y   :y} invaders]
+    (doseq [{idx    :idx
+             x      :x
+             y      :y} invaders]
       ; ... and this logic insures that sprites alterate across the patrol.
-      (let [sprite-idx (mod (+ tick invader-idx (quot invader-idx 8)) 2)]
-        (q/image (sprites sprite-idx) invader-x invader-y)))))
+      (let [sprite-idx (mod (+ tick idx (quot idx 8)) 2)]
+        (q/image (sprites sprite-idx) x y)))
+    (doseq [{x      :x
+             y      :y
+             stage  :stage} invader-explosions]
+      (q/image (explosions stage) x y))
+    ))
+;          (q/image explosion x y)))
 
 (defn draw-mystery-ship [{location                :mystery-ship
                           {sprites :mystery-ship} :sprites}]
